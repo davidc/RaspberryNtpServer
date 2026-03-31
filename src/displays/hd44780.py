@@ -1,59 +1,62 @@
+"""HD44780-based LCD Display driver via I2C (PCF8574 or MCP23008)"""
+
 import time
 import logging
 import smbus
 import copy
+from .display import Display
 
 
-class LcdDisplay:
-    """ Support for LCD displays using HD44780 display chips using
-        I2C via either PCF8574 or MCP23008 (Adafruit way) I2C to GPIO converters
+class HD44780Display(Display):
+    """Support for LCD displays using HD44780 display chips using
+    I2C via either PCF8574 or MCP23008 (Adafruit way) I2C to GPIO converters
     """
-    def __init__(self, sm_bus:int=1, i2c_addr:int=0x27, cols:int=20, rows:int=4, ada:bool=False, fast_lcd:bool=False):
+
+    def __init__(self, sm_bus: int = 1, i2c_addr: int = 0x27, cols: int = 20, rows: int = 4, ada: bool = False, fast_lcd: bool = False):
         """
-        smbus:int: should be `1` for all Raspbery PI (with exception of Raspberry 1)
-        i2c_addr:int: default is 0x27 (used with most hardware), Adafruit uses 0x20 if no bridges soldered
-        cols:int: currently always 20
-        rows:int: currently always 4
-        ada:bool: default False, use PCF8574 chip and pin-layout
-                          True: use Adafruit MCP23008 and their specific pin-layout
+        Args:
+            sm_bus: I2C bus number (should be 1 for all Raspberry PI except Raspberry 1)
+            i2c_addr: I2C address of the display (default 0x27, Adafruit uses 0x20)
+            cols: Display width in characters (currently always 20)
+            rows: Display height in characters (currently always 4)
+            ada: Use Adafruit MCP23008 chip and pin-layout (False = PCF8574)
+            fast_lcd: Update faster, low latency, exceeds specs (set False on display problems)
         """
-        self.log: logging.Logger = logging.getLogger("LcdDisplay")
+        self.log: logging.Logger = logging.getLogger("HD44780Display")
         self.ada: bool = ada
-        self.fast_lcd:bool = fast_lcd
+        self.fast_lcd: bool = fast_lcd
+        
         try:
-            self.bus:smbus.SMBus = smbus.SMBus(sm_bus)  # Rev 1 Pi: 0, Rev 2 Pi: 1  # pyright:ignore[reportUnknownMemberType]
-            self.active:bool = True
+            self.bus: smbus.SMBus = smbus.SMBus(sm_bus)  # Rev 1 Pi: 0, Rev 2 Pi: 1  # pyright:ignore[reportUnknownMemberType]
         except Exception as e:
-            self.log.error(f"Cannot open LCD on I2C bus: {e}")
-            self.active = False
-            return
+            self.log.error(f"Cannot open I2C bus {sm_bus}: {e}")
+            raise
 
         try:
             self.bus.read_byte(i2c_addr)  # pyright:ignore[reportUnknownMemberType]
             self.log.info(f"Connected to display at i2c address {hex(i2c_addr)}")
         except:
             self.log.error(f"No device found at i2c address {hex(i2c_addr)}")
-            self.active = False
-            return
-        
-        self.i2c_addr:int = i2c_addr
-        self.cols:int = cols
-        self.rows:int = rows
-        self.line_cmds:list[int] = [0x80, 0xC0, 0x94, 0xD4]  # lines 1-4
+            raise
+
+        self.i2c_addr: int = i2c_addr
+        self.cols: int = cols
+        self.rows: int = rows
+        self.line_cmds: list[int] = [0x80, 0xC0, 0x94, 0xD4]  # lines 1-4
 
         # Communication timing for LCD display
         if self.fast_lcd is True:
-            self.start_byte_delay:float = 0.0
-            self.delay:float = 0.000001
-            self.cls_delay:float = 0.0008
+            self.start_byte_delay: float = 0.0
+            self.delay: float = 0.000001
+            self.cls_delay: float = 0.0008
         else:
             self.start_byte_delay = 0.001
             self.delay = 0.00001
             self.cls_delay = 0.003
-        
-        self.type_data:int = 1
-        self.type_command:int = 0
-        self.enable:int = 0x04
+
+        self.type_data: int = 1
+        self.type_command: int = 0
+        self.enable: int = 0x04
         self.set_backlight(True)
 
         if self.ada is True:
@@ -70,15 +73,14 @@ class LcdDisplay:
         time.sleep(self.cls_delay)
 
         # Initialize the display buffer
-        self.screen_buf:list[list[str]] = [[" " for _ in range(cols)] for _ in range(rows)]
-        self.cur_row:int = 0
-        self.cur_col:int = 0
-        
+        self.screen_buf: list[list[str]] = [[" " for _ in range(cols)] for _ in range(rows)]
+        self.cur_row: int = 0
+        self.cur_col: int = 0
+
         self.log.debug("LCD display initialized.")
 
     def _init_mcp23008(self):
-        # Taken from: <https://github.com/adafruit/Adafruit_CircuitPython_MCP230xx/blob/main/adafruit_mcp230xx/mcp23008.py>
-        # and <https://github.com/adafruit/Adafruit_CircuitPython_CharLCD>
+        """Initialize MCP23008 I2C GPIO expander (Adafruit specific)"""
         if self.ada is True:
             self.bus.write_byte_data(self.i2c_addr, 0x00, 0x01)  # IODIR, reset almost all to OUTPUT, bit 0 input (unused)  # pyright:ignore[reportUnknownMemberType]
             time.sleep(self.delay)
@@ -86,28 +88,25 @@ class LcdDisplay:
             time.sleep(self.delay)
             self.bus.write_byte_data(self.i2c_addr, 0x01, 0x00)  # IPOL, no inverse polarity  # pyright:ignore[reportUnknownMemberType]
             time.sleep(self.delay)
-            
-    def set_backlight(self, state:bool):
-        """ Set backlight on/off """
-        if self.active is False:
-            return
+
+    def set_backlight(self, state: bool) -> None:
+        """Set backlight on/off"""
         if state is True:
-            self.backlight:int = 0x08
+            self.backlight: int = 0x08
         else:
             self.backlight = 0x00
 
-    def _dev_write(self, byte:int):
+    def _dev_write(self, byte: int):
+        """Write byte to I2C GPIO expander"""
         if self.ada is True:
             # Do a register-write for MCP23008, using GPIO function 0x09
             self.bus.write_byte_data(self.i2c_addr, 0x09, byte)  # MCP23008 GPIO function    # pyright:ignore[reportUnknownMemberType]
         else:
             # Just write content for PCF8574
             self.bus.write_byte(self.i2c_addr, byte)  # pyright:ignore[reportUnknownMemberType]
-        
-    def write(self, byte:int, data_type:int):
-        """ write to Display chip using an I2C to GPIO converter """
-        if self.active is False:
-            return
+
+    def write(self, byte: int, data_type: int):
+        """Write to Display chip using an I2C to GPIO converter"""
 
         if self.ada is True:
             # 'cabling' between display chip and i2c convert is different for adafruit!
@@ -135,19 +134,15 @@ class LcdDisplay:
         self._dev_write(lo_byte & ~self.enable)
         time.sleep(self.delay)
 
-    def write_row(self, row:int):
-        """ Write complete row from buffer """
-        if self.active is False:
-            return
+    def write_row(self, row: int):
+        """Write complete row from buffer"""
         ra = self.line_cmds[row]
         self.write(ra, self.type_command)
         for i in range(self.cols):
             self.write(ord(self.screen_buf[row][i]), self.type_data)
 
-    def print_row(self, row:int, text:str):
-        """ Print row to buffer and display """
-        if self.active is False:
-            return
+    def print_row(self, row: int, text: str) -> None:
+        """Print row to buffer and display"""
         if row < 0:
             row = 0
         if row >= self.rows:
@@ -156,10 +151,8 @@ class LcdDisplay:
         self.screen_buf[row] = [text[i] for i in range(len(text))]
         self.write_row(row)
 
-    def print_at(self, row:int, col:int, text:str):
-        """ Print to buffer and display at given coordinates """
-        if self.active is False:
-            return
+    def print_at(self, row: int, col: int, text: str):
+        """Print to buffer and display at given coordinates"""
         if row < 0 or row > self.rows - 1:
             row = 0
         if col < 0 or col > self.cols - 1:
@@ -169,10 +162,8 @@ class LcdDisplay:
             self.screen_buf[row][i + col] = text[i]
         self.write_row(row)
 
-    def scroll(self, n:int=1):
-        """ Scroll screen a number of lines """
-        if self.active is False:
-            return
+    def scroll(self, n: int = 1):
+        """Scroll screen a number of lines"""
         for _ in range(n):
             for r in range(self.rows - 1):
                 self.screen_buf[r] = copy.copy(self.screen_buf[r + 1])
@@ -183,10 +174,8 @@ class LcdDisplay:
         if self.cur_row > 0:
             self.cur_row = self.cur_row - 1
 
-    def print(self, text:str):
-        """ Print longer text, scroll if necessary """
-        if self.active is False:
-            return
+    def print(self, text: str):
+        """Print longer text, scroll if necessary"""
         if len(text) + self.cur_col > self.cols:
             ctext = text[: self.cols - self.cur_col]
             rtext = text[self.cols - self.cur_col :]
@@ -207,27 +196,27 @@ class LcdDisplay:
 
 
 if __name__ == "__main__":
-    """ Stand-alone test routines for the display
-        Adapt i2c_addr and adafruit_hw below
+    """Stand-alone test routines for the display
+    Adapt i2c_addr and adafruit_hw below
     """
 
     # Adapt:
-    i2c_addr:int = 0x27         # I2C address, adapt to your board (usual values are 0x20 .. 0x27)
-    adafruit_hw:bool = False    # Set to True for Adafruit MCP23008 based I2C converter, False for all others (PCF8574 converter)
-    fast_lcd:bool = True        # True: Exceed documented timings for LCD for reduced latency
-    
+    i2c_addr: int = 0x27         # I2C address, adapt to your board (usual values are 0x20 .. 0x27)
+    adafruit_hw: bool = False    # Set to True for Adafruit MCP23008 based I2C converter, False for all others (PCF8574 converter)
+    fast_lcd: bool = True        # True: Exceed documented timings for LCD for reduced latency
+
     # Start test:
     logging.basicConfig(level=logging.DEBUG)
-    lcd = LcdDisplay(1, i2c_addr, 20, 4, ada=adafruit_hw, fast_lcd=fast_lcd)
+    lcd = HD44780Display(1, i2c_addr, 20, 4, ada=adafruit_hw, fast_lcd=fast_lcd)
     if lcd.active is True:
-        if adafruit_hw is True:  #pyright:ignore[reportUnnecessaryComparison]
-            print("Display (Ada) is active, outputting a test-text to the display...")  #pyright:ignore[reportUnreachable]
+        if adafruit_hw is True:  # pyright:ignore[reportUnnecessaryComparison]
+            print("Display (Ada) is active, outputting a test-text to the display...")  # pyright:ignore[reportUnreachable]
         else:
             print("Display is active, outputting a test-text to the display...")
-        test_text:str = "Hello! That is a hell of a lot of text that we are going to display on this tiny screen. However there is always a way to present information in a way that is helpful, even under contrained conditions."
+        test_text: str = "Hello! That is a hell of a lot of text that we are going to display on this tiny screen. However there is always a way to present information in a way that is helpful, even under contrained conditions."
         start_time = time.time()
         lcd.print(test_text)
-        dtc:float = (time.time()-start_time)/len(test_text)        
+        dtc: float = (time.time() - start_time) / len(test_text)
         print(f"Done, display speed per character: {dtc:1.8f} sec")
         exit(0)
     else:

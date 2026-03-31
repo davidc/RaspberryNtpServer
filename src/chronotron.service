@@ -1,5 +1,5 @@
 [Unit]
-Description=Display chrony statistics on 4x20 LCD
+Description=Display NTP and GPS statistics on a display
 After=network.target
 
 [Service]

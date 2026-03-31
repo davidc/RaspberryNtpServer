@@ -7,26 +7,35 @@ import gps  # from python3-gps  # pyright:ignore[reportMissingTypeStubs]
 import logging
 import threading
 from typing import Any, cast
+import yaml
+import os
 
-from i2c_lcd import LcdDisplay
+from displays import Display, create_display
 # from button import Button
 
-#------- CONFIGURATION PARAMETERS -----------------------
-# start_time and end_time switch the display off during night-time.
-# Set both to None for always-on
-start_time:str|None = "07:00"
-end_time:str|None = "21:00"
-# I2C address of the display, usually between 0x20 (Adafruit default) and 0x27 (all others)
-i2c_address_display:int = 0x27
-# Set to True for Adafruit I2C adapter which uses MCP23008 chip. Enables Adafruit specific connections
-# Set to False for all others which use PCF8574 
-adafruit_i2c_hardware:bool = False
-# Display time as UTC
-display_utc_time:bool = False
-# LCD display update timing: False: default, slow according to spec,
-# True: update faster, low latency, exceeds specs. Set to False on display problems!
-lcd_latency_overdrive:bool = True
-# ---------------------------------------------------------
+CHRONOTRON_VERSION = "3.0.0"
+
+######################################################
+##                    ATTENTION                     ##
+######################################################
+##                                                  ##
+##  As of v3, you no longer configure chronotron    ##
+##  in this python file, but use a YAML file        ##
+##  instead. Refer to README.md for documentation   ##
+##  and chronotron.yaml for example configuration.  ##
+##                                                  ##
+######################################################
+
+
+# Parsed Configuration with defaults (use chronotron.yaml to configure these)
+backlight_mode: str = "on"  # "on", "off", or "timed"
+backlight_start_time_obj = None
+backlight_end_time_obj = None
+display_utc_time: bool = False
+
+# Runtime
+displays: list[Display] = []
+log: logging.Logger = None
 
 # Global Variables for GPS data from background thread
 gps_lock: threading.Lock = threading.Lock()
@@ -34,30 +43,117 @@ gps_mode: int|None = None
 gps_sats_used: int|None = None
 gps_sats: int|None = None
 
-bad_time_format_warning:bool = False
-def is_current_time_in_interval(log:logging.Logger, start_time_str:str|None, end_time_str:str|None):
-    global bad_time_format_warning
-    if start_time_str is None or end_time_str is None or start_time_str == "None" or end_time_str == "None":
-        return True
-    # Get the current local time
-    current_time = datetime.now().time()
-    # Parse start and end times from strings
+
+#------- CONFIGURATION FROM YAML FILE -----------------------
+def load_configuration(config_file: str = "chronotron.yaml") -> dict[str, Any]:  # pyright:ignore[reportExplicitAny]
+    """
+    Load configuration from YAML file.
+    If the file doesn't exist in the current directory, a basic default will be used.
+    TODO add a command line arg -f to specify the config file location
+    """
+    default_config = {
+        "options": {
+            "backlight": {
+                "start_time": "07:00",
+                "end_time": "21:00",
+            },
+            "display_utc_time": False,
+        },
+        "displays": [
+            {
+                "type": "hd44780",
+                "sm_bus": 1,
+                "i2c_address": 0x27,
+                "adafruit_hardware": False,
+                "fast_update": True,
+                "cols": 20,
+                "rows": 4,
+            }
+        ],
+    }
+
+    # Check if config file exists
+    if not os.path.exists(config_file):
+        # TODO this should be fatal if the user specified the file using -f
+        log.warning(f"Config file {config_file} not found, using defaults")
+        return default_config
+
     try:
-        start_time = datetime.strptime(start_time_str, "%H:%M").time()
-        end_time = datetime.strptime(end_time_str, "%H:%M").time()
+        with open(config_file, "r") as f:
+            loaded_config = yaml.safe_load(f)
+            if loaded_config is None:
+                return default_config
+            return loaded_config
     except Exception as e:
-        if bad_time_format_warning is False:
-            bad_time_format_warning = True
-            log.error(f"Invalid start_time {start_time_str} or end_time {start_time_str}, ignoring restrictions: {e}")
-        return True
-    # Check if the interval spans across midnight
-    if start_time > end_time:
-        return current_time >= start_time or current_time < end_time
+        log.error(f"Error parsing config file {config_file}: {e}")
+        raise
+
+
+
+def parse_configuration(config: dict[str, Any]):
+    # Extract global options configuration
+    options = config.get("options", {})
+    backlight_config = options.get("backlight", True)  # Default to always on
+    display_utc_time = options.get("display_utc_time", False)
+
+    # Parse backlight configuration
+    if isinstance(backlight_config, bool):
+        backlight_mode = "on" if backlight_config else "off"
+    elif isinstance(backlight_config, dict):
+        if "start_time" not in backlight_config or "end_time" not in backlight_config:
+            raise ValueError("Backlight configuration dictionary must contain both 'start_time' and 'end_time' keys.")
+
+        backlight_mode = "timed"
+        try:
+            backlight_start_time_obj = datetime.strptime(backlight_config["start_time"], "%H:%M").time()
+            backlight_end_time_obj = datetime.strptime(backlight_config["end_time"], "%H:%M").time()
+        except ValueError as e:
+            raise ValueError(f"Invalid time format in backlight configuration: {e}")
     else:
-        return start_time <= current_time <= end_time
+        raise ValueError(
+            f"Invalid backlight configuration type: {type(backlight_config)}. Must be boolean or dictionary."
+        )
+
+    # Initialise displays from configuration
+    displays_config = config.get("displays", [])
+
+    for display_config in displays_config:
+        display = create_display(display_config)
+        if display is not None:
+            displays.append(display)
+            # log.info(f"Initialised display: {display_config.get('type', 'unknown')}")
+        else:
+            log.warning(f"Failed to initialise display: {display_config.get('type', 'unknown')}")
+
+    if not displays:
+        log.error("No displays were successfully initialised, exiting")
+        exit(-1)
+
+    log.info("Initialised %d display%s" % (len(displays), "" if len(displays) == 1 else "s"))
+
+    if backlight_mode != "timed":
+        log.info("Backlight will be always " + backlight_mode.upper())
+    else:
+        log.info("Backlight will be on between " + backlight_start_time_obj.strftime("%H:%M") + " and " + backlight_end_time_obj.strftime("%H:%M"))
 
 
-def exec_cmd(log:logging.Logger, cmd:list[str]) -> list[str]:
+def is_backlight_wanted() -> bool:
+    """Determine if backlight should be on based on configuration and current time."""
+    if backlight_mode == "on":
+        return True
+    elif backlight_mode == "off":
+        return False
+    else:  # timed mode
+        # Get the current local time
+        current_time = datetime.now().time()
+        # Check if the interval spans across midnight
+        if backlight_start_time_obj > backlight_end_time_obj:
+            return current_time >= backlight_start_time_obj or current_time < backlight_end_time_obj
+        else:
+            return backlight_start_time_obj <= current_time <= backlight_end_time_obj
+
+
+def exec_cmd(cmd:list[str]) -> list[str]:
     ret:list[str] = []
     p = subprocess.Popen(
         cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, bufsize=-1
@@ -76,7 +172,7 @@ def exec_cmd(log:logging.Logger, cmd:list[str]) -> list[str]:
     return ret
 
 
-def get_statistics(log:logging.Logger, _host:str="localhost") -> dict[str, Any]:  # pyright:ignore[reportExplicitAny]
+def get_statistics(_host:str="localhost") -> dict[str, Any]:  # pyright:ignore[reportExplicitAny]
     # Get number of active satellites from gpsd
     n = 0
     stats: dict[str, Any] = {}  # pyright:ignore[reportExplicitAny]
@@ -87,7 +183,7 @@ def get_statistics(log:logging.Logger, _host:str="localhost") -> dict[str, Any]:
 
     # Get chrony tracking information
     cmd = ["chronyc", "tracking"]
-    ret = exec_cmd(log, cmd)
+    ret = exec_cmd(cmd)
     stats["stratum"] = None
     stats["system_time_offset"] = None
     for line in ret:
@@ -110,7 +206,7 @@ def get_statistics(log:logging.Logger, _host:str="localhost") -> dict[str, Any]:
 
     # Get current time source
     cmd = ["chronyc", "sources"]
-    ret = exec_cmd(log, cmd)
+    ret = exec_cmd(cmd)
     stats["is_locked"] = False
     stats["is_pps"] = False
     stats["source"] = None
@@ -140,9 +236,29 @@ def get_statistics(log:logging.Logger, _host:str="localhost") -> dict[str, Any]:
 
     return stats
 
+def init():
+    logging.basicConfig(level=logging.INFO)
+    global log
+    log = logging.getLogger("chronotron")
+    log.setLevel("INFO")
+
+    # TODO temporarily store the initial log messages in a buffer so they can be available to rich_terminal.
+    # if they haven't been collected by the time initialisation is complete, discard them and restore the original log handler.
+
+    log.info(f"Chronotron version {CHRONOTRON_VERSION} starting")
+
+    # Load and parse configuration
+    config = load_configuration()
+    parse_configuration(config)
+
+    gps_thread = threading.Thread(target = gps_client)
+    gps_thread.daemon = True
+    gps_thread.start()
+
 
 def main_loop():
     last_time = ""
+    last_backlight = False
     last_offset = ""
     select_state = 0
     select_states = 2
@@ -155,19 +271,8 @@ def main_loop():
     old_src = None
     global start_time
     global end_time
-    global i2c_address_display
-    global adafruit_i2c_hardware
     global display_utc_time
-    global lcd_latency_overdrive
-
-    version = "2.0.0"
-
-    # Time interval for backlight, set to None for permanent backlight:
-
-    logging.basicConfig(level=logging.INFO)
-    log = logging.getLogger("Chronotron")
-    log.setLevel("INFO")
-    log.info(f"Chronotron version {version} starting")
+    global displays
 
     def select_button():  # pyright:ignore[reportUnusedFunction]
         nonlocal select_state
@@ -185,29 +290,22 @@ def main_loop():
 
     # bt = Button([(27, "blue", select_button), (22, "black", main_button)])
 
-    # See beginning of file for configuration of i2c parameters
-    lcd = LcdDisplay(sm_bus=1, i2c_addr=i2c_address_display, cols=20, rows=4, ada=adafruit_i2c_hardware, fast_lcd=lcd_latency_overdrive)
-    if lcd.active is False:
-        log.error("Failed to open display, exiting...")
-        exit(-1)
-
     while True:
         if display_utc_time is True:
             time_str: str = time.strftime("%Y-%m-%d  %H:%M:%S", time.gmtime())
         else:
             time_str = time.strftime("%Y-%m-%d  %H:%M:%S")
         if time_str != last_time:
-            if (
-                start_time is None
-                or end_time is None
-                or is_current_time_in_interval(log, start_time, end_time)
-                or start_time == end_time
-            ):
-                lcd.set_backlight(True)
-            else:
-                lcd.set_backlight(False)
+            # Set backlight state for all displays
+            should_backlight = is_backlight_wanted()
+            if should_backlight != last_backlight or last_time == "": # last_time is "" at startup, always set initial state
+                last_backlight = should_backlight
+                log.info("Turning backlight " + ("ON" if should_backlight else "OFF"))
+                for display in displays:
+                    display.set_backlight(should_backlight)
+
             last_time = time_str
-            stats = get_statistics(log)
+            stats = get_statistics()
 
             if stats["is_locked"] != old_lock:
                 old_lock:bool = cast(bool, stats["is_locked"])
@@ -279,12 +377,17 @@ def main_loop():
                 dev_str = "       "
             else:
                 dev_str = f"{stats['adjusted_offset']:>7}"
-            last_str = f"F[{mode}] {sats_used}/{sats}   {dev_str}"  
-            lcd.print_row(0, time_str)
-            lcd.print_row(1, offs)
-            lcd.print_row(2, source_str)
-            lcd.print_row(3, last_str)
-        time.sleep(0.05)
+            last_str = f"F[{mode}] {sats_used}/{sats}   {dev_str}"
+
+            # Send display output to all configured displays
+            for display in displays:
+                display.print_row(0, time_str)
+                display.print_row(1, offs)
+                display.print_row(2, source_str)
+                display.print_row(3, last_str)
+        time.sleep(1) # 0.05 - TODO, config update_interval in config file
+        # log.info("Just saying hi.")
+
 
 def gps_client():
     global gps_mode
@@ -302,9 +405,6 @@ def gps_client():
     finally:
         session.close()
 
-
-gps_thread = threading.Thread(target = gps_client)
-gps_thread.daemon = True
-gps_thread.start()
+init()
 
 main_loop()

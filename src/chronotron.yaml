@@ -1,0 +1,63 @@
+# Chronotron - NTP/GPS Display Configuration File
+# This file contains all configuration parameters for the chronotron display driver
+
+# Global Options Configuration
+# These settings apply to all displays
+options:
+  # Backlight control
+  # Can be "on" (always on), "off" (always off), or a time range dictionary
+  backlight: on
+    # HH:MM when backlight turns ON
+    # start_time: "07:00"
+    
+    # HH:MM when backlight turns OFF
+    # end_time: "21:00"
+  
+  # Display time as UTC instead of local time
+  display_utc_time: false
+
+# Displays Configuration
+# List of display devices to output status information to
+# You can use multiple displays simultaneously (e.g., LCD + file logging)
+displays:
+  - # HD44780-based LCD Display via I2C
+    # (supports both PCF8574 and Adafruit MCP23008 I2C converters)
+    type: "hd44780"
+    
+    # I2C bus number (1 for Raspberry Pi 2+, 0 for Raspberry Pi 1)
+    sm_bus: 5
+    
+    # I2C address of the display
+    # Common values:
+    #   0x27 (39 decimal) - Most common, used by PCF8574 adapter
+    #   0x20 (32 decimal) - Adafruit with MCP23008 chip
+    i2c_address: 0x27
+    
+    # Set to true if using Adafruit I2C adapter with MCP23008 chip
+    # Set to false for all others (most use PCF8574/PCF8585)
+    # Affects pin mapping and control signals
+    adafruit_hardware: false
+    
+    # LCD display update timing mode
+    # false = Standard slow update per HD44780 specification (safe, slow)
+    # true  = Fast update with low latency (exceeds specs, set to false if display issues)
+    fast_update: true
+    
+    # Display dimensions
+    cols: 20  # Characters per row
+    rows: 4   # Number of rows
+
+  # Uncomment below to enable file-based display output for debugging/testing
+  # Note: this will grow without bounds and thrash your SD card, so is only for testing
+  # - type: "file_output"
+  #   file: "display_output.log"  # Path to output file
+  #   cols: 20
+  #   rows: 4
+
+  # Uncomment below to enable rich terminal output display (LCD-style)
+  - type: "rich_terminal"
+    cols: 20
+    rows: 4
+    backlight_on_style: "bright_cyan on blue"
+    backlight_off_style: "cyan on black"
+
