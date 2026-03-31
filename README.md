@@ -186,7 +186,7 @@ Once you successfully receive output from your GPS module, next step is to insta
 For Raspberry Pi OS (and Ubuntu and Debian variants), that would be:
 
 ```bash
-sudo apt install gpsd
+sudo apt install gpsd pps-tools
 ```
 
 Edit `/etc/default/gpsd`:
