@@ -194,7 +194,7 @@ Edit `/etc/default/gpsd`:
 For serial connections (use your device name as tested above):
 
 ```
-GPSD_OPTIONS="-n -G"
+GPSD_OPTIONS="-n"
 DEVICES="/dev/ttyS0"
 USBAUTO="false"
 ```
