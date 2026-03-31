@@ -1,7 +1,7 @@
 # Chronotron - NTP/GPS display dependencies
 PyYAML>=5.4
-# TODO figure out what the actual pip package is called that debian calls python3-gps:
-gps>=3.20
+# This is a fork, ideally use python3-gps apt package instead
+gpsd
 # TODO is this the right pip package name:
-smbus-cffi>=0.5.1
+# smbus-cffi>=0.5.1
 rich>=13.0

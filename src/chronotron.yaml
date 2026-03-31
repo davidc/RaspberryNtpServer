@@ -41,7 +41,7 @@ displays:
     # LCD display update timing mode
     # false = Standard slow update per HD44780 specification (safe, slow)
     # true  = Fast update with low latency (exceeds specs, set to false if display issues)
-    fast_update: true
+    fast_update: false
     
     # Display dimensions
     cols: 20  # Characters per row
@@ -61,3 +61,6 @@ displays:
     backlight_on_style: "bright_cyan on blue"
     backlight_off_style: "cyan on black"
 
+gpsd:
+  host: "192.168.10.249"  # gpsd host (default: localhost)
+  port: 2947              # gpsd port (default: 2947)

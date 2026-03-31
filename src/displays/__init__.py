@@ -1,59 +1,63 @@
 """Display drivers for chronotron NTP/GPS status display"""
+
 import logging
 
 from .display import Display
-from .hd44780 import HD44780Display
-from .file_output import FileOutputDisplay
-from .rich_terminal import RichTerminalDisplay
 
-__all__ = ["Display", "HD44780Display", "FileOutputDisplay", "RichTerminalDisplay", "create_display"]
+__all__ = [
+    "Display",
+    "create_display",
+]
 
 log: logging.Logger = logging.getLogger("displays")
 
+
 def create_display(display_config: dict) -> Display | None:
     """Factory function to create the appropriate display based on configuration.
-    
+
     Args:
         display_config: Display configuration dictionary with at minimum:
             {
                 "type": "hd44780" | "file_output",
                 // type-specific configuration
             }
-    
+
     Returns:
-        Initialized Display instance, or None if creation failed
+        An initialised Display instance, or None if creation failed
     """
     display_type = display_config.get("type", "").lower()
 
     try:
 
         if display_type == "hd44780":
+            from .hd44780 import HD44780Display
+
             return HD44780Display(
-                sm_bus=display_config.get("sm_bus", 1),
-                i2c_addr=display_config.get("i2c_address", 0x27),
-                cols=display_config.get("cols", 20),
-                rows=display_config.get("rows", 4),
-                ada=display_config.get("adafruit_hardware", False),
-                fast_lcd=display_config.get("fast_update", True),
+                sm_bus=display_config.get("sm_bus", None),
+                i2c_addr=display_config.get("i2c_address", None),
+                cols=display_config.get("cols", None),
+                rows=display_config.get("rows", None),
+                ada=display_config.get("adafruit_hardware", None),
+                fast_lcd=display_config.get("fast_update", None),
             )
 
         elif display_type == "file_output":
+            from .file_output import FileOutputDisplay
+
             return FileOutputDisplay(
-                file_path=display_config.get("file", "display_output.log"),
-                cols=display_config.get("cols", 20),
-                rows=display_config.get("rows", 4),
+                file_path=display_config.get("file", None),
+                cols=display_config.get("cols", None),
+                rows=display_config.get("rows", None),
             )
-        
+
         elif display_type == "rich_terminal":
+            from .rich_terminal import RichTerminalDisplay
+
             return RichTerminalDisplay(
-                cols=display_config.get("cols", 20),
-                rows=display_config.get("rows", 4),
-                backlight_on_style=display_config.get(
-                    "backlight_on_style", "bright_cyan on blue"
-                ),
-                backlight_off_style=display_config.get(
-                    "backlight_off_style", "cyan on black"
-                ),
+                cols=display_config.get("cols", None),
+                rows=display_config.get("rows", None),
+                backlight_on_style=display_config.get("backlight_on_style", None),
+                backlight_off_style=display_config.get("backlight_off_style", None),
             )
 
         else:
