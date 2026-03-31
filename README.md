@@ -303,6 +303,12 @@ If you [compile](https://chrony.tuxfamily.org/doc/3.5/installation.html), [mirro
 
 Udev rules are tricky and depend on the user of the `chronyd` process and the type of connection your are using.
 
+First install setserial:
+
+```bash
+sudo apt install setserial
+```
+
 Create a file `/etc/udev/rules.d/pps-sources.rules` starting with this example (which works with Raspberry Pi OS), which you will need to modify to your configuration:
 
 ```
