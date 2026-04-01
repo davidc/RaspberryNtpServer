@@ -158,7 +158,7 @@ displays:
   - type: rich_terminal
     cols: 20
     rows: 4
-    backlight_on_style: "bright_cyan on light_blue"
+    backlight_on_style: "bright_cyan on blue"
     backlight_off_style: "cyan on black"
     max_log_messages: 10
 ```

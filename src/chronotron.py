@@ -2,15 +2,14 @@
 
 import time
 from datetime import datetime, time as dt_time
-import subprocess
-import gps  # from python3-gps  # pyright:ignore[reportMissingTypeStubs]
 import logging
-import threading
 from typing import Any, cast
 import yaml
 import os
 
 from displays import Display, create_display
+from gpsd import GpsdClient
+from chrony import ChronyClient
 
 # from button import Button
 
@@ -39,12 +38,8 @@ gpsd_port: int
 # Runtime
 displays: list[Display] = []
 log: logging.Logger
-
-# Global Variables for GPS data from background thread
-gps_lock: threading.Lock = threading.Lock()
-gps_mode: int | None = None
-gps_sats_used: int | None = None
-gps_sats: int | None = None
+gps_client: GpsdClient
+chrony_client: ChronyClient
 
 
 # ------- CONFIGURATION FROM YAML FILE -----------------------
@@ -149,12 +144,13 @@ def parse_configuration(config: dict[str, Any]):
     )
 
     # gpsd config
-
+    global gpsd_client
+    global chrony_client
     options = config.get("gpsd", {})
-    global gpsd_host
-    global gpsd_port
     gpsd_host = options.get("host", "localhost")
     gpsd_port = options.get("port", 2947)
+    gpsd_client = GpsdClient(host=gpsd_host, port=gpsd_port)
+    chrony_client = ChronyClient()
 
     if backlight_mode != "timed":
         log.info("Backlight will be always " + backlight_mode.upper())
@@ -185,103 +181,6 @@ def is_backlight_wanted() -> bool:
             return backlight_start_time_obj <= current_time <= backlight_end_time_obj # pyright: ignore[reportOptionalOperand, reportOperatorIssue]
 
 
-def exec_cmd(cmd: list[str]) -> list[str]:
-    ret: list[str] = []
-    p = subprocess.Popen(
-        cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, bufsize=-1
-    )
-    if p.stdout is None:
-        log.error(f"Failed to execute {cmd}")
-        return []
-    for line in p.stdout:
-        ret.append(line.decode("utf-8").strip())
-    _ = p.wait()
-    if p.returncode != 0:
-        cm = ""
-        for c in cmd:
-            cm = cm + c + " "
-        print("Warning: " + cm + "failed: " + str(p.returncode))
-    return ret
-
-
-def get_statistics(
-    _host: str = "localhost",
-) -> dict[str, Any]:  # pyright:ignore[reportExplicitAny]
-    # return {
-    #     "mode": "?",
-    #     "sats": "?",
-    #     "sats_used": "?",
-    #     "stratum": "?",
-    #     "system_time_offset": None,
-    #     "is_locked": False,
-    #     "is_pps": False,
-    #     "source": None,
-    #     "adjusted_offset": None,
-    # }
-    # Get number of active satellites from gpsd
-    n = 0
-    stats: dict[str, Any] = {}  # pyright:ignore[reportExplicitAny]
-    with gps_lock:
-        stats["mode"] = gps_mode
-        stats["sats"] = gps_sats
-        stats["sats_used"] = gps_sats_used
-
-    # Get chrony tracking information
-    cmd = ["chronyc", "tracking"]
-    ret = exec_cmd(cmd)
-    stats["stratum"] = None
-    stats["system_time_offset"] = None
-    for line in ret:
-        pars = line.split(":", 1)
-        if len(pars) == 2:
-            parm = pars[0].strip()
-            if parm == "System time":
-                sub_pars = pars[1].strip().split(" ")
-                if len(sub_pars) > 2:
-                    val = float(sub_pars[0])
-                    if "slow" == sub_pars[2]:
-                        val = -1.0 * val
-                    stats["system_time_offset"] = val
-            elif parm == "Stratum":
-                try:
-                    n = int(pars[1])
-                    stats["stratum"] = n
-                except:
-                    stats["stratum"] = None
-
-    # Get current time source
-    cmd = ["chronyc", "sources"]
-    ret = exec_cmd(cmd)
-    stats["is_locked"] = False
-    stats["is_pps"] = False
-    stats["source"] = None
-    stats["adjusted_offset"] = None
-    for line in ret:
-        if "#* PPS" in line:
-            stats["is_locked"] = True
-            stats["is_pps"] = True
-            stats["source"] = "PPS"
-            # #* PPS0                          0   4   377    22   +271ns[ +385ns] +
-            try:
-                stats["adjusted_offset"] = line[50:59].strip()
-            except:
-                pass
-        else:
-            if "^*" in line:
-                stats["is_locked"] = True
-                stats["is_pps"] = False
-                try:
-                    stats["source"] = line[3:33].strip()
-                except:
-                    pass
-                try:
-                    stats["adjusted_offset"] = line[50:59].strip()
-                except:
-                    pass
-
-    return stats
-
-
 def init():
     logging.basicConfig(level=logging.INFO)
     global log
@@ -297,10 +196,6 @@ def init():
     config = load_configuration()
     parse_configuration(config)
 
-    gps_thread = threading.Thread(target=gps_client)
-    gps_thread.daemon = True
-    gps_thread.start()
-
 
 def main_loop():
     last_time = ""
@@ -311,10 +206,6 @@ def main_loop():
     trigger_time = 0
     main_state = 0
     main_states = 2
-    old_lock = False
-    old_pps = False
-    old_stratum = None
-    old_src = None
 
     def select_button():  # pyright:ignore[reportUnusedFunction]
         nonlocal select_state
@@ -339,45 +230,28 @@ def main_loop():
             time_str = time.strftime("%Y-%m-%d  %H:%M:%S")
         if time_str != last_time:
             # Set backlight state for all displays
-            should_backlight = is_backlight_wanted()
+            want_backlight = is_backlight_wanted()
             if (
-                should_backlight != last_backlight or last_time == ""
+                want_backlight != last_backlight or last_time == ""
             ):  # last_time is "" at startup, so always set initial state
-                last_backlight = should_backlight
-                log.info("Turning backlight " + ("ON" if should_backlight else "OFF"))
+                last_backlight = want_backlight
+                log.info("Turning backlight " + ("ON" if want_backlight else "OFF"))
                 for display in displays:
-                    display.set_backlight(should_backlight)
+                    display.set_backlight(want_backlight)
 
             last_time = time_str
-            stats = get_statistics()
 
-            if stats["is_locked"] != old_lock:
-                old_lock: bool = cast(bool, stats["is_locked"])
-                if old_lock is True:
-                    log.info("Chrony aquired lock to time source")
-
-            if old_src != stats["source"]:
-                old_src: str | None = cast(str | None, stats["source"])
-                if old_src is None:
-                    src = "None"
-                else:
-                    src = old_src
-                log.info(f"Chrony receiving time source from {src}")
-
-            if old_stratum != stats["stratum"]:
-                old_stratum: str | None = cast(str | None, stats["stratum"])
-                if old_stratum is None:
-                    strat: str = "?"
-                else:
-                    strat = old_stratum
-                log.info(f"Chrony stratum level changed to {strat}")
-
-            if old_pps != stats["is_pps"]:
-                old_pps: bool = cast(bool, stats["is_pps"])
-                if old_pps is True:
-                    log.info("Chrony locked to high precision GPS PPS signal")
-                else:
-                    log.info("Chrony lost PPS signal")
+            # Get statistics from both clients
+            stats: dict[str, Any] = {}  # pyright:ignore[reportExplicitAny]
+            stats["mode"] = gpsd_client.mode
+            stats["sats"] = gpsd_client.sats
+            stats["sats_used"] = gpsd_client.sats_used
+            stats["stratum"] = chrony_client.stratum
+            stats["system_time_offset"] = chrony_client.system_time_offset
+            stats["is_locked"] = chrony_client.is_locked
+            stats["is_pps"] = chrony_client.is_pps
+            stats["source"] = chrony_client.source
+            stats["adjusted_offset"] = chrony_client.adjusted_offset
 
             # if select_state == 0:
             #     lcd.print_row(0, time_str)
@@ -431,44 +305,6 @@ def main_loop():
                 display.print_row(3, last_str)
         time.sleep(1)  # 0.05 - TODO, config update_interval in config file
         # log.info("Just saying hi.")
-
-
-def gps_client():
-    global gps_mode
-    global gps_sats
-    global gps_sats_used
-
-    session: gps.gps | None = None
-
-    while True:
-
-        try:
-            session = gps.gps(
-                host=gpsd_host, port=str(gpsd_port), mode=gps.WATCH_ENABLE
-            )
-            log.info(f"Connected to gpsd at {gpsd_host}:{gpsd_port}")
-            while 0 == session.read():
-                with gps_lock:
-                    log.info(
-                        f"data fix {len(session.satellites)} used {session.satellites_used} mode {session.fix.mode}"
-                    )
-                    gps_mode = session.fix.mode
-                    gps_sats = len(session.satellites)
-                    gps_sats_used = session.satellites_used
-                time.sleep(1)  # TODO make this the same as our refresh rate.
-        except Exception as e:
-            log.warning(f"gpsd {gpsd_host}:{gpsd_port} connection error: {e}")
-        finally:
-            if session:
-                session.close()
-
-        with gps_lock:
-            gps_mode = None
-            gps_sats_used = None
-            gps_sats = None
-
-        log.info("Waiting 5 seconds before retrying gpsd connection...")
-        time.sleep(5)
 
 
 init()
