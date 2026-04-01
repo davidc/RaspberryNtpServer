@@ -47,8 +47,6 @@ class GpsdClient:
                 )
                 self.log.info(f"Connected to gpsd at {self.host}:{self.port}")
                 while 0 == session.read():
-
-                    # TODO log significant changes here
                     self._update_gps_data(session)
 
                     time.sleep(self.update_interval)
@@ -74,15 +72,12 @@ class GpsdClient:
 
         # Log significant changes
         if new_mode != self._mode:
-            old_mode_str = self._mode if self._mode is not None else "None"
-            new_mode_str = str(new_mode) if new_mode  is not None else "None"
+            old_mode_str = str(self._mode) if self._mode is not None else "None"
+            new_mode_str = str(new_mode) if new_mode is not None else "None"
             self.log.info(
                 f"GPS sync mode changed from {old_mode_str} to {new_mode_str}"
             )
 
-        # self.log.info(
-        # f"data fix {len(session.satellites)} used {session.satellites_used} mode {session.fix.mode}"
-        # )
         with self._lock:
             self._mode = new_mode
             self._sats = new_sats

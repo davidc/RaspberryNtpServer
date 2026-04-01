@@ -11,8 +11,12 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.layout import Layout
 from rich.live import Live
+from rich.align import Align
 
 from .display import Display
+
+STYLE_TABLE_HEADER = "bold magenta"
+STYLE_PANEL = "bright_blue"
 
 
 class RichLogHandler(logging.Handler):
@@ -91,10 +95,12 @@ class RichTerminalDisplay(Display):
             Layout(name="logs"),  # Logs take remaining space
         )
 
+        self._lcd_panel: Panel = self._create_lcd_panel()
+
         # Set up LCD container with horizontal centering
         self.layout["lcd_container"].split_row(
             Layout(name="lcd_left", ratio=1),  # Flexible space
-            Layout(name="lcd", size=self.cols + 4),  # LCD panel width
+            Layout(self._lcd_panel, name="lcd", size=self.cols + 4),  # LCD panel width
             Layout(name="lcd_right", ratio=1),  # Flexible space
         )
 
@@ -106,10 +112,9 @@ class RichTerminalDisplay(Display):
         self.live: Optional[Live] = None
 
         try:
-            # Set up signal handler for terminal resize
-            # TODO test if we even still need this with Live
+            # Set up signal handler for terminal resize, so we react immediately rather than wait for next update
             signal.signal(
-                signal.SIGWINCH, # pyright: ignore[reportAttributeAccessIssue] - signal doesn't exist on Windows
+                signal.SIGWINCH,  # pyright: ignore[reportAttributeAccessIssue] - signal doesn't exist on Windows
                 self._handle_resize,
             )
         except (OSError, ValueError, AttributeError):
@@ -138,7 +143,7 @@ class RichTerminalDisplay(Display):
                 self.console.size.width, self.console.size.height
             )
         )
-        self._update_display()
+        self._update_display(force=True)
 
     def _cleanup(self) -> None:
         """Clean up resources and restore terminal state."""
@@ -186,11 +191,27 @@ class RichTerminalDisplay(Display):
 
     def _create_lcd_panel(self) -> Panel:
         """Create the LCD panel."""
+
+        # self._lcd_text = self._get_lcd_text()
+        # self._lcd_live = Live(self._lcd_text, auto_refresh=False)
+
+        # Create panel with border matching log panel
+        panel = Panel(
+            self._create_lcd_text(),
+            title="[bold]LCD Display[/bold]",
+            border_style=STYLE_PANEL,  # Same as log panel
+            padding=(0, 1),
+            width=self.cols + 4,  # Content width + padding + borders
+            height=self.rows + 2,  # Content height + borders
+            expand=False,  # Don't expand to fill available space
+        )
+
+        return panel
+
+    def _create_lcd_text(self) -> Text:
         style = (
             self.backlight_on_style if self._backlight_on else self.backlight_off_style
         )
-
-        # Create LCD content as centered lines
         lcd_lines = []
         for row_text in self.buffer:
             # Pad/truncate each row to exactly cols characters
@@ -200,19 +221,7 @@ class RichTerminalDisplay(Display):
         lcd_content = "\n".join(lcd_lines)
 
         # Create styled text
-        text = Text(lcd_content)
-        text.stylize(style)
-
-        # Create panel with border matching log panel
-        panel = Panel(
-            text,
-            title="[bold]LCD Display[/bold]",
-            border_style="blue",  # Same as log panel
-            padding=(0, 1),
-            width=self.cols + 4,  # Content width + padding + borders
-        )
-
-        return panel
+        return Text(lcd_content, style=style)
 
     def _create_log_panel(self) -> Panel:
         """Create the log messages panel."""
@@ -220,8 +229,14 @@ class RichTerminalDisplay(Display):
         terminal_height = self.console.size.height
         log_panel_height = terminal_height - (self.rows + 2)  # LCD height + borders
 
+        table = self._create_log_table(log_panel_height)
+
+        panel = Panel(table, title="[bold]Log Messages[/bold]", border_style=STYLE_PANEL)
+        return panel
+
+    def _create_log_table(self, log_panel_height):
         table = Table(
-            show_header=True, header_style="bold magenta", box=None, show_edge=False
+            show_header=True, header_style=STYLE_TABLE_HEADER, box=None, show_edge=False
         )
         table.add_column("Time", style="dim", width=8, no_wrap=True)
         table.add_column("Level", width=8, no_wrap=True)
@@ -244,12 +259,10 @@ class RichTerminalDisplay(Display):
         empty_rows = max(0, log_panel_height - 4 - current_rows)
         for _ in range(empty_rows):
             table.add_row("x", "", "")
+        return table
 
-        panel = Panel(table, title="[bold]Log Messages[/bold]", border_style="blue")
-        return panel
-
-    def _update_display(self) -> None:
-        """Update only the changed parts of the display layout."""
+    def _update_display(self, force: bool = False) -> None:
+        """Update the changed parts of the display layout."""
 
         # Update only the panels that have changed
         updated = False
@@ -264,11 +277,11 @@ class RichTerminalDisplay(Display):
             updated = True
 
         # Only refresh the display if something changed
-        if updated:
+        if updated or force:
             # Start Live display if not already started
             if self.live is None:
                 self.live = Live(
-                    self.layout, console=self.console, screen=False, auto_refresh=False
+                    self.layout, console=self.console, screen=True, auto_refresh=False
                 )
                 self.live.start()
             else:
@@ -276,7 +289,6 @@ class RichTerminalDisplay(Display):
                 self.live.refresh()
 
     def print_row(self, row: int, text: str) -> None:
-
         if row < 0 or row >= self.rows:
             return
 
@@ -289,10 +301,9 @@ class RichTerminalDisplay(Display):
             self._update_display()
 
     def set_backlight(self, state: bool) -> None:
-
         if self._backlight_on != state:
             self._backlight_on = state
-            self._update_display()
+            self._update_display(force=True)  # Force full update to apply new style
 
     def __del__(self):
         # Stop live display if running
