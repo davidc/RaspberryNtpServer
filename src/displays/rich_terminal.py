@@ -2,6 +2,7 @@
 
 import logging
 import sys
+import time
 import signal
 import atexit
 from typing import Optional, List, Tuple
@@ -19,36 +20,6 @@ STYLE_TABLE_HEADER = "bold magenta"
 STYLE_PANEL = "bright_blue"
 
 
-class RichLogHandler(logging.Handler):
-    """Custom log handler that displays messages in the rich terminal display."""
-
-    def __init__(self, display: "RichTerminalDisplay"):
-        super().__init__()
-        self.display = display
-        self.messages: List[Tuple[str, str, str]] = []  # (level, message, timestamp)
-
-    def emit(self, record: logging.LogRecord) -> None:
-        """Add a log message to the display."""
-        level = record.levelname
-        message = record.getMessage()
-
-        # Format timestamp
-        import time
-
-        time_str = time.strftime("%H:%M:%S", time.localtime(record.created))
-
-        self.messages.append((level, message, time_str))
-
-        # Keep only the latest messages that fit
-        max_messages = self.display._calculate_max_log_messages()
-        if len(self.messages) > max_messages:
-            self.messages = self.messages[-max_messages:]
-
-        # Mark logs as dirty for selective update
-        self.display._logs_dirty = True
-        self.display._update_display()
-
-
 class RichTerminalDisplay(Display):
     """A terminal LCD-style display implemented with rich."""
 
@@ -60,6 +31,7 @@ class RichTerminalDisplay(Display):
         rows: int | None = None,
         backlight_on_style: str | None = None,
         backlight_off_style: str | None = None,
+        log_buffer=None,
     ):
         """Initialise the Rich terminal display."""
         # Prevent multiple instances
@@ -82,8 +54,6 @@ class RichTerminalDisplay(Display):
         self.buffer: list[str] = [" " * cols for _ in range(rows)]
 
         self.console = Console()
-        self.log_handler: Optional[RichLogHandler] = None
-
         # Track if LCD needs redraw
         self._lcd_dirty = True
         self._logs_dirty = True
@@ -107,8 +77,6 @@ class RichTerminalDisplay(Display):
         self.layout["lcd_left"].update("")  # Empty left space
         self.layout["lcd_right"].update("")  # Empty right space
 
-        self.log.info(self.layout["logs"])
-
         self.live: Optional[Live] = None
 
         try:
@@ -125,8 +93,16 @@ class RichTerminalDisplay(Display):
             # Register cleanup
             atexit.register(self._cleanup)
 
-            # Replace root logger handlers with our custom handler
-            self._setup_logging()
+            self.log_buffer = log_buffer
+            if self.log_buffer:
+                self.log_buffer.wanted()
+                self.log_buffer.add_listener(self._on_log_update)
+
+            # Remove existing StreamHandlers to prevent printing over our terminal
+            root_logger = logging.getLogger()
+            for handler in root_logger.handlers.copy():
+                if isinstance(handler, logging.StreamHandler):
+                    root_logger.removeHandler(handler)
 
             # Update initial display
             self._update_display()
@@ -148,33 +124,21 @@ class RichTerminalDisplay(Display):
     def _cleanup(self) -> None:
         """Clean up resources and restore terminal state."""
         if hasattr(self, "console"):
+            self.console.set_alt_screen(False)
             self.console.show_cursor(True)
 
-    def _setup_logging(self) -> None:
-        """Set up Python logging to use our custom handler."""
-
-        # Create our log handler
-        self.log_handler = RichLogHandler(self)
-        self.log_handler.setLevel(logging.INFO)
-
-        root_logger = logging.getLogger()
-
-        # Remove all existing handlers to prevent printing over our terminal
-        for handler in root_logger.handlers[:]:
-            root_logger.removeHandler(handler)
-
-        # Add our custom handler
-        root_logger.addHandler(self.log_handler)
-        root_logger.setLevel(logging.INFO)
+    def _on_log_update(self) -> None:
+        """Called when the log buffer is updated."""
+        self._logs_dirty = True
+        self._update_display()
 
     def _calculate_max_log_messages(self) -> int:
-        """Calculate maximum log messages that can fit based on terminal height."""
+        """Calculate maximum log messages that can fit based in terminal height."""
         terminal_height = self.console.size.height
 
         # LCD takes self.rows + 2 (borders), logs take the rest
-        # Log panel has header (1) + borders (2) + table header (1) = 4 lines overhead
-        # Available height for log rows = terminal_height - (self.rows + 2) - 4
-        available_log_height = terminal_height - (self.rows + 2) - 4
+        # Log panel has borders (2) + table header (1) = 3 lines overhead
+        available_log_height = terminal_height - (self.rows + 2) - 3
 
         return max(1, available_log_height)
 
@@ -225,16 +189,15 @@ class RichTerminalDisplay(Display):
 
     def _create_log_panel(self) -> Panel:
         """Create the log messages panel."""
-        # Calculate available height for the log panel
-        terminal_height = self.console.size.height
-        log_panel_height = terminal_height - (self.rows + 2)  # LCD height + borders
 
-        table = self._create_log_table(log_panel_height)
+        table = self._create_log_table()
 
-        panel = Panel(table, title="[bold]Log Messages[/bold]", border_style=STYLE_PANEL)
+        panel = Panel(
+            table, title="[bold]Log Messages[/bold]", border_style=STYLE_PANEL
+        )
         return panel
 
-    def _create_log_table(self, log_panel_height):
+    def _create_log_table(self):
         table = Table(
             show_header=True, header_style=STYLE_TABLE_HEADER, box=None, show_edge=False
         )
@@ -242,23 +205,22 @@ class RichTerminalDisplay(Display):
         table.add_column("Level", width=8, no_wrap=True)
         table.add_column("Message", style="white")
 
-        if self.log_handler and self.log_handler.messages:
-            # Add actual log messages TODO check for wrapping and check we don't have too many, only use the latest
-            for level, message, timestamp in self.log_handler.messages:
+        if self.log_buffer:
+            # TODO if a log wraps over multiple lines, we need fewer than max_messages; figure out how to scroll panel to the bottom
+            max_messages = self._calculate_max_log_messages()
+            recent_records = self.log_buffer.get_recent_records(max_messages)
+
+            for record in recent_records:
+                level = record.levelname
+                message = record.getMessage()
+                timestamp = time.strftime("%H:%M:%S", time.localtime(record.created))
+
                 table.add_row(
                     timestamp,
                     Text(level, style=self._get_log_level_color(level)),
                     message,
                 )
 
-            current_rows = len(self.log_handler.messages) + 1  # +1 for header
-        else:
-            current_rows = 0
-
-        # Add empty rows to fill the space (header + borders + table header = 4, so subtract 4)
-        empty_rows = max(0, log_panel_height - 4 - current_rows)
-        for _ in range(empty_rows):
-            table.add_row("x", "", "")
         return table
 
     def _update_display(self, force: bool = False) -> None:

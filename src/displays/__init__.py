@@ -1,6 +1,9 @@
 """Display drivers for chronotron NTP/GPS status display"""
 
 import logging
+from typing import Optional
+
+from scrolling_buffer_handler import ScrollingBufferHandler
 
 from .display import Display
 
@@ -12,7 +15,9 @@ __all__ = [
 log: logging.Logger = logging.getLogger("displays")
 
 
-def create_display(display_config: dict) -> Display | None:
+def create_display(
+    display_config: dict, log_buffer: Optional[ScrollingBufferHandler] = None
+) -> Display | None:
     """Factory function to create the appropriate display based on configuration.
 
     Args:
@@ -58,6 +63,7 @@ def create_display(display_config: dict) -> Display | None:
                 rows=display_config.get("rows", None),
                 backlight_on_style=display_config.get("backlight_on_style", None),
                 backlight_off_style=display_config.get("backlight_off_style", None),
+                log_buffer=log_buffer,
             )
 
         else:
@@ -66,5 +72,4 @@ def create_display(display_config: dict) -> Display | None:
 
     except Exception as e:
         log.error(f"Failed to create display of type {display_type}: {e}")
-        log.exception(e)
         return None

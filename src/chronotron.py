@@ -3,6 +3,7 @@
 import time
 from datetime import datetime, time as dt_time
 import logging
+import logging.handlers
 from typing import Any, cast
 import yaml
 import os
@@ -10,6 +11,7 @@ import os
 from displays import Display, create_display
 from gpsd import GpsdClient
 from chrony import ChronyClient
+from scrolling_buffer_handler import ScrollingBufferHandler
 
 # from button import Button
 
@@ -36,8 +38,10 @@ gpsd_host: str
 gpsd_port: int
 
 # Runtime
-displays: list[Display] = []
 log: logging.Logger
+log_buffer: ScrollingBufferHandler
+
+displays: list[Display] = []
 gps_client: GpsdClient
 chrony_client: ChronyClient
 
@@ -126,7 +130,7 @@ def parse_configuration(config: dict[str, Any]):
     displays_config = config.get("displays", [])
 
     for display_config in displays_config:
-        display = create_display(display_config)
+        display = create_display(display_config, log_buffer)
         if display is not None:
             displays.append(display)
             # log.info(f"Initialised display: {display_config.get('type', 'unknown')}")
@@ -182,13 +186,17 @@ def is_backlight_wanted() -> bool:
 
 
 def init():
+    # Initialise logging
     logging.basicConfig(level=logging.INFO)
     global log
     log = logging.getLogger("chronotron")
-    log.setLevel("INFO")
+    # log.setLevel("INFO")
 
-    # TODO temporarily store the initial log messages in a buffer so they can be available to rich_terminal.
-    # if they haven't been collected by the time initialisation is complete, discard them and restore the original log handler.
+    # Store initial log messages in a buffer until displays are initialised, so they can be available to rich_terminal
+    global log_buffer
+    log_buffer = ScrollingBufferHandler(capacity=128)
+    root_logger = logging.getLogger()
+    root_logger.addHandler(log_buffer)
 
     log.info(f"Chronotron version {CHRONOTRON_VERSION} starting")
 
@@ -196,6 +204,12 @@ def init():
     config = load_configuration()
     parse_configuration(config)
 
+    # Now displays are initialised, remove our log buffer if nobody wants it
+    if not log_buffer.is_wanted:
+        root_logger.removeHandler(log_buffer)
+        log_buffer.close()
+
+    log.info(f"Chronotron version {CHRONOTRON_VERSION} started with {len(displays)} display{len(displays) != 1 and 's' or ''}")
 
 def main_loop():
     last_time = ""
