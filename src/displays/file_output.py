@@ -1,7 +1,9 @@
 """File output display for debugging and testing"""
 
+import contextlib
 import logging
 from datetime import datetime
+import sys
 from .display import Display
 
 
@@ -20,13 +22,13 @@ class FileOutputDisplay(Display):
     ):
         """
         Args:
-            file_path: Path to the output file (created if it doesn't exist)
+            file_path: Path to the output file (created if it doesn't exist), or "-" for stdout (default: "-")
             cols: Display width in characters (for formatting)
             rows: Display height in characters (for reference)
         """
 
         # Defaults:
-        file_path = file_path or "display_output.log"
+        file_path = file_path or "-"
         cols = cols or 20
         rows = rows or 4
 
@@ -38,7 +40,7 @@ class FileOutputDisplay(Display):
 
         try:
             # Try to open/create the file to verify write permissions
-            with open(self.file_path, "a") as f:
+            with self._output_open() as f:
                 f.write(
                     f"=== Display session started at {datetime.now().isoformat()} ===\n"
                 )
@@ -48,6 +50,19 @@ class FileOutputDisplay(Display):
                 f"Failed to initialise FileOutputDisplay with file {self.file_path}: {e}"
             )
             raise
+
+    @contextlib.contextmanager
+    def _output_open(self):
+        if self.file_path == "-":
+            f = sys.stdout
+        else:
+            f = open(self.file_path, "a")
+
+        try:
+            yield f
+        finally:
+            if f is not sys.stdout:
+                f.close()
 
     def print_row(self, row: int, text: str) -> None:
         """Write a row to the output file.
@@ -61,7 +76,7 @@ class FileOutputDisplay(Display):
         text = text[: self.cols].ljust(self.cols, " ")
 
         try:
-            with open(self.file_path, "a") as f:
+            with self._output_open() as f:
                 backlight_status = "ON " if self._backlight_on else "OFF"
                 f.write(
                     f"[{datetime.now().isoformat()}] Row {row} | BL:{backlight_status} | {text}\n"
@@ -77,7 +92,7 @@ class FileOutputDisplay(Display):
         """
         self._backlight_on = state
         try:
-            with open(self.file_path, "a") as f:
+            with self._output_open() as f:
                 status = "ON" if state else "OFF"
                 f.write(f"[{datetime.now().isoformat()}] Backlight {status}\n")
         except Exception as e:
