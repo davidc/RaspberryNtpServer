@@ -616,7 +616,7 @@ class ChronySocketClient(ChronyClient):
 
                 break
 
-        # If we haven't found a PPS source, look for a source matcihng "^*" i.e. mode is client and state is selected
+        # If we haven't found a PPS source, look for a source matching "^*" i.e. mode is client and state is selected
         if new_is_locked is False:
             for source in sources:
                 if (
@@ -624,7 +624,7 @@ class ChronySocketClient(ChronyClient):
                     and source["state"] == RPY_SD_ST_SELECTED
                 ):
                     new_is_locked = True
-                    new_is_pps = True
+                    new_is_pps = False
 
                     if "ip_addr" in source:
                         try:
