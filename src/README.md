@@ -114,6 +114,17 @@ options:
   display_utc_time: false
 ```
 
+**display_refresh_interval** - Time in seconds between display updates. Use this to control how frequently the display refreshes. Default is 0.25 seconds (~4 fps). Smaller values will make the display more responsive but use more CPU. If you adjust this, you'll probably also want to adjust the gpsd and chrony data_update_intervals.
+
+### Example: custom display refresh rate
+
+```yaml
+options:
+  backlight: true
+  display_utc_time: false
+  display_refresh_interval: 0.1  # Update display every 0.1 seconds
+```
+
 **displays** - Configure one or more displays. You **must** specify a `displays` array, with at least one display entry, even if you only have one display. Only specify values that differ from defaults; any omitted keys will use default values.
 
 If you have the standard HD44780 display, you can omit a `chronotron.yaml` file as the defaults include a HD44780 display on I2C address 0x27 on bus 1. However if you create this file at all, you will need to specify displays.
@@ -129,7 +140,7 @@ displays:
 This is the minimal configuration; all other settings use defaults. The defaults are:
 - `sm_bus: 1` (standard for Raspberry Pi 2+)
 - `adafruit_hardware: false` (for standard PCF8574 adapters)
-- `fast_update: true` (faster LCD updates)
+- `fast_update: false` (faster LCD updates)
 - `cols: 20` and `rows: 4` (4x20 LCD display)
 
 **For Adafruit hardware** using the MCP23008 chip at address 0x20:
@@ -169,6 +180,34 @@ When using `rich_terminal`, log messages are automatically displayed in a panel 
 - `hd44780` - LCD display with HD44780 controller via I2C (PCF8574 or Adafruit MCP23008)
 - `file_output` - Write display output to a file (useful for testing and debugging)
 - `rich_terminal` - Terminal display using rich, rendered in LCD style
+
+**gpsd** - Configuration for the GPS daemon connection.
+
+Available gpsd options:
+- `host` (default: "localhost") - The gpsd server host address
+- `port` (default: 2947) - The gpsd server port number
+- `data_update_interval` (default: 1) - Time in seconds between GPS data polls. Use smaller values for more responsive GPS updates, larger values to load.
+
+### Example: custom gpsd configuration
+
+```yaml
+gpsd:
+  host: "127.0.0.1"
+  port: 2947
+  data_update_interval: 0.5  # Poll GPS data every 0.5 seconds
+```
+
+**chrony** - Configuration for NTP synchronisation status monitoring.
+
+Available chrony options:
+- `data_update_interval` (default: 1) - Time in seconds between Chrony statistics updates. Use smaller values for more responsive NTP status updates, larger values to reduce load.
+
+### Example: custom chrony configuration
+
+```yaml
+chrony:
+  data_update_interval: 2  # Update NTP status every 2 seconds
+```
 
 
 2. Install dependencies
@@ -320,6 +359,8 @@ The `chronotron.py` service checks periodically `chronyc` for NTP statistics (`c
 
 ## History
 
+- 2026-04-04: 3.0.2: Make display_refresh_interval and gpsd and chrony data_update_interval configurable.
+- 2026-04-01: 3.0.1: Refactor gpsd and chrony clients into classes, move chronyclient into a thread too, make gpsd host and port configurable.
 - 2026-03-31: 3.0.0: Refactored display architecture to support multiple display types and YAML configuration
 - 2026-03-31: Added new `rich_terminal` display backend (requires `rich` package) and `file_output`;  `hd44780` remains available
 - 2026-03-31: Enhanced `rich_terminal` with integrated log display, colorized LCD appearance, and screen clearing

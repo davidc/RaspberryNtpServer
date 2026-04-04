@@ -15,7 +15,7 @@ from scrolling_buffer_handler import ScrollingBufferHandler
 
 # from button import Button
 
-CHRONOTRON_VERSION = "3.0.0"
+CHRONOTRON_VERSION = "3.0.2"
 
 ######################################################
 ##                    ATTENTION                     ##
@@ -34,6 +34,7 @@ backlight_mode: str = "on"  # "on", "off", or "timed"
 backlight_start_time_obj: dt_time | None = None
 backlight_end_time_obj: dt_time | None = None
 display_utc_time: bool = False
+display_refresh_interval: float = 0.25
 gpsd_host: str
 gpsd_port: int
 
@@ -101,6 +102,9 @@ def parse_configuration(config: dict[str, Any]):
     global display_utc_time
     display_utc_time = options.get("display_utc_time", False)
 
+    global display_refresh_interval
+    display_refresh_interval = options.get("display_refresh_interval", 0.25)
+
     global backlight_mode
     # Parse backlight configuration
     if isinstance(backlight_config, bool):
@@ -150,11 +154,16 @@ def parse_configuration(config: dict[str, Any]):
     # gpsd config
     global gpsd_client
     global chrony_client
-    options = config.get("gpsd", {})
-    gpsd_host = options.get("host", "localhost")
-    gpsd_port = options.get("port", 2947)
-    gpsd_client = GpsdClient(host=gpsd_host, port=gpsd_port)
-    chrony_client = ChronyClient()
+    gpsd_config = config.get("gpsd", {})
+    gpsd_host = gpsd_config.get("host", None)
+    gpsd_port = gpsd_config.get("port", None)
+    gpsd_update_interval = gpsd_config.get("data_update_interval", None)
+    gpsd_client = GpsdClient(host=gpsd_host, port=gpsd_port, update_interval=gpsd_update_interval)
+
+    # chrony config
+    chrony_config = config.get("chrony", {})
+    chrony_update_interval = chrony_config.get("data_update_interval", None)
+    chrony_client = ChronyClient(update_interval=chrony_update_interval)
 
     if backlight_mode != "timed":
         log.info("Backlight will be always " + backlight_mode.upper())
@@ -317,8 +326,7 @@ def main_loop():
                 display.print_row(1, offs)
                 display.print_row(2, source_str)
                 display.print_row(3, last_str)
-        time.sleep(1)  # 0.05 - TODO, config update_interval in config file
-        # log.info("Just saying hi.")
+        time.sleep(display_refresh_interval)
 
 
 init()

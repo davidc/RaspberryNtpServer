@@ -12,9 +12,9 @@ from typing import Any, Optional
 class ChronyClient:
     """Client for retrieving NTP synchronisation data from Chrony."""
 
-    def __init__(self, update_interval: float = 1.0):
+    def __init__(self, update_interval: Optional[float]):
         """Initialize the Chrony client."""
-        self.update_interval = update_interval
+        self.update_interval = update_interval or 1.0
         self.log = logging.getLogger("chronotron.chrony")
 
         self._lock = threading.Lock()

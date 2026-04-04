@@ -13,7 +13,7 @@ class GpsdClient:
     """Client for retrieving GPS data from gpsd daemon."""
 
     def __init__(
-        self, host: str = "localhost", port: int = 2947, update_interval: float = 1.0
+        self, host: Optional[str], port: Optional[int], update_interval: Optional[float] = None
     ):
         """
         Initialize the GPS client and start the background thread.
@@ -23,9 +23,9 @@ class GpsdClient:
             port: The gpsd port number
             update_interval: Time in seconds between GPS data polls
         """
-        self.host = host
-        self.port = port
-        self.update_interval = update_interval
+        self.host = host or "127.0.0.1"
+        self.port = port or 2947
+        self.update_interval = update_interval or 1.0
         self.log = logging.getLogger("chronotron.gpsd")
 
         self._lock = threading.Lock()
