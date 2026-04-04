@@ -24,34 +24,34 @@ options:
 # List of display devices to output status information to. You can use multiple displays simultaneously (e.g. LCD + file logging)
 displays:
   # HD44780-based LCD Display via I2C (supports both PCF8574 and Adafruit MCP23008 I2C converters)
-  - type: "hd44780"
-    
-    # I2C bus number (1 for Raspberry Pi 2+, 0 for Raspberry Pi 1)
-    sm_bus: 1
-    
-    # I2C address of the display
-    # Common values:
-    #   0x27 (39 decimal) - Most common, used by PCF8574 adapter
-    #   0x20 (32 decimal) - Adafruit with MCP23008 chip
-    i2c_address: 0x27
-    
-    # Set to true if using Adafruit I2C adapter with MCP23008 chip
-    # Set to false for all others (most use PCF8574/PCF8585)
-    adafruit_hardware: false
-    
-    # LCD display update timing mode
-    # false = Standard slow update per HD44780 specification (safe, slow)
-    # true  = Fast update with low latency (exceeds specs, set to false if display issues)
-    fast_update: false
-    
-    # Display dimensions
-    cols: 20  # Characters per row
-    rows: 4   # Number of rows
+  # - type: "hd44780"
+  #   
+  #   # I2C bus number (1 for Raspberry Pi 2+, 0 for Raspberry Pi 1)
+  #   sm_bus: 1
+  #   
+  #   # I2C address of the display
+  #   # Common values:
+  #   #   0x27 (39 decimal) - Most common, used by PCF8574 adapter
+  #   #   0x20 (32 decimal) - Adafruit with MCP23008 chip
+  #   i2c_address: 0x27
+  #   
+  #   # Set to true if using Adafruit I2C adapter with MCP23008 chip
+  #   # Set to false for all others (most use PCF8574/PCF8585)
+  #   adafruit_hardware: false
+  #   
+  #   # LCD display update timing mode
+  #   # false = Standard slow update per HD44780 specification (safe, slow)
+  #   # true  = Fast update with low latency (exceeds specs, set to false if display issues)
+  #   fast_update: false
+  #   
+  #   # Display dimensions
+  #   cols: 20  # Characters per row
+  #   rows: 4   # Number of rows
 
   # Uncomment below to enable file-based display output for debugging/testing
   # Note: this will grow without bounds and thrash your SD card, so is only for testing
   # - type: "file_output"
-  #   file: "display_output.log"  # Path to output file, relative to cwd if not absolute
+  #   file: "-"  # Path to output file, relative to cwd if not absolute. use "-" for stdout
   #   cols: 20
   #   rows: 4
 
@@ -72,4 +72,7 @@ gpsd:
 # Chrony Configuration
 # Settings for NTP synchronisation status monitoring
 chrony:
+  method: "socket"        # Method to query chronyd ("socket" or "chronyc", default: socket)
+  host: "127.0.0.1"       # chronyd host (default: 127.0.0.1)
+  port: 323               # chronyd port (default: 323)
   data_update_interval: 1 # Time in seconds between Chrony statistics updates (default: 1)

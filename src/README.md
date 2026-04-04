@@ -200,12 +200,18 @@ gpsd:
 **chrony** - Configuration for NTP synchronisation status monitoring.
 
 Available chrony options:
+- `method` (default: socket) - Method to get data from chronyd. Can be `chronyc` (legacy method that constantly spawns `chronyc` processes) or `socket` (which connects directly to the chronyd using UDP)
+- `host` (default: "localhost") - Hostname or IP address where chronyd is running. Ignored unless `method` is `socket`.
+- `port` (default: 323) - Port number where chronyd is listening (`cmdport` in chrony.conf). Ignored unless `method` is `socket`.
 - `data_update_interval` (default: 1) - Time in seconds between Chrony statistics updates. Use smaller values for more responsive NTP status updates, larger values to reduce load.
 
 ### Example: custom chrony configuration
 
 ```yaml
 chrony:
+  method: socket
+  host: "127.0.0.1"
+  port: 323
   data_update_interval: 2  # Update NTP status every 2 seconds
 ```
 
@@ -359,11 +365,12 @@ The `chronotron.py` service checks periodically `chronyc` for NTP statistics (`c
 
 ## History
 
+- 2026-04-04: 3.0.3: Refactor chrony client to support both current chronyc method and a new method that communicates with chronyd directly to avoid hammering the system with processes. This is now the default; to revert to using "chronyc", see documentation above.
 - 2026-04-04: 3.0.2: Make display_refresh_interval and gpsd and chrony data_update_interval configurable.
 - 2026-04-01: 3.0.1: Refactor gpsd and chrony clients into classes, move chronyclient into a thread too, make gpsd host and port configurable.
-- 2026-03-31: 3.0.0: Refactored display architecture to support multiple display types and YAML configuration
-- 2026-03-31: Added new `rich_terminal` display backend (requires `rich` package) and `file_output`;  `hd44780` remains available
-- 2026-03-31: Enhanced `rich_terminal` with integrated log display, colorized LCD appearance, and screen clearing
+- 2026-03-31: 3.0.0: Refactored display architecture to support multiple display types and YAML configuration; `hd44780` remains available.
+- 2026-03-31: 3.0.0: Added new `rich_terminal` display backend with pretty colour fake LCD and log display (requires `rich` package).
+- 2026-03-31: 3.0.0: Added new `file_output` display backend to print to file or stdout.
 - 2025-10-09: Support Adafruit's hardware that uses a different I2C chip, the MCP23008
 - 2025-10-08: Add I2C port check on display initialization
 - 2025-10-05: Update of dependencies, Trixie support (thanks [rglidden](https://github.com/rglidden))

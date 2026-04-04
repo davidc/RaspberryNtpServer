@@ -6,14 +6,20 @@ import subprocess
 import logging
 import threading
 import time
+from abc import ABC, abstractmethod
 from typing import Any, Optional
 
 
-class ChronyClient:
-    """Client for retrieving NTP synchronisation data from Chrony."""
+class ChronyClient(ABC):
+    """Abstract base class for clients retrieving NTP synchronisation data from Chrony."""
 
     def __init__(self, update_interval: Optional[float]):
-        """Initialize the Chrony client."""
+        """
+        Initialize the Chrony client.
+
+        Args:
+            update_interval: Time in seconds between updates, defaults to 1.0
+        """
         self.update_interval = update_interval or 1.0
         self.log = logging.getLogger("chronotron.chrony")
 
@@ -25,6 +31,101 @@ class ChronyClient:
         self._source: Optional[str] = None
         self._adjusted_offset: Optional[str] = None
 
+    @property
+    def stratum(self) -> Optional[int]:
+        """Get the stratum level."""
+        with self._lock:
+            return self._stratum
+
+    @property
+    def system_time_offset(self) -> Optional[float]:
+        """Get the system time offset in seconds."""
+        with self._lock:
+            return self._system_time_offset
+
+    @property
+    def is_locked(self) -> bool:
+        """Get whether Chrony is locked to a time source."""
+        with self._lock:
+            return self._is_locked
+
+    @property
+    def is_pps(self) -> bool:
+        """Get whether Chrony is locked to PPS signal."""
+        with self._lock:
+            return self._is_pps
+
+    @property
+    def source(self) -> Optional[str]:
+        """Get the current time source."""
+        with self._lock:
+            return self._source
+
+    @property
+    def adjusted_offset(self) -> Optional[str]:
+        """Get the adjusted offset."""
+        with self._lock:
+            return self._adjusted_offset
+
+    def _update_state(
+        self,
+        stratum: Optional[int],
+        system_time_offset: Optional[float],
+        is_locked: bool,
+        is_pps: bool,
+        source: Optional[str],
+        adjusted_offset: Optional[str],
+    ) -> None:
+        """
+        Update internal state and log significant changes. For use by subclasses only.
+
+        Args:
+            stratum: New stratum level
+            system_time_offset: New system time offset
+            is_locked: New locked state
+            is_pps: New PPS state
+            source: New time source
+            adjusted_offset: New adjusted offset
+        """
+        # Log significant changes
+        if stratum != self._stratum:
+            old_stratum_str = self._stratum if self._stratum is not None else "None"
+            new_stratum_str = str(stratum) if stratum is not None else "None"
+            self.log.info(
+                f"Chrony stratum changed from {old_stratum_str} to {new_stratum_str}"
+            )
+
+        if source != self._source:
+            self.log.info(f"Chrony source changed to {source}")
+
+        if is_locked != self._is_locked:
+            if is_locked:
+                self.log.info("Chrony aquired lock to time source")
+            else:
+                self.log.info("Chrony lost lock to time source")
+
+        if is_pps != self._is_pps:
+            if is_pps:
+                self.log.info("Chrony locked to high precision GPS PPS signal")
+            else:
+                self.log.info("Chrony lost PPS signal")
+
+        # Update internal state with lock
+        with self._lock:
+            self._stratum = stratum
+            self._system_time_offset = system_time_offset
+            self._is_locked = is_locked
+            self._is_pps = is_pps
+            self._source = source
+            self._adjusted_offset = adjusted_offset
+
+
+class ChronyCmdClient(ChronyClient):
+    """Chrony client implementation using chronyc command."""
+
+    def __init__(self, update_interval: Optional[float]):
+        """Initialize the Chrony cmd client and start the background thread."""
+        super().__init__(update_interval)
         self._thread = threading.Thread(target=self._chrony_thread, daemon=True)
         self._thread.start()
 
@@ -107,37 +208,15 @@ class ChronyClient:
                     except IndexError:
                         pass
 
-        # Log significant changes
-        if new_stratum != self._stratum:
-            old_stratum_str = self._stratum if self._stratum is not None else "None"
-            new_stratum_str = str(new_stratum) if new_stratum is not None else "None"
-            self.log.info(
-                f"Chrony stratum changed from {old_stratum_str} to {new_stratum_str}"
-            )
-
-        if new_is_locked != self._is_locked:
-            if new_is_locked:
-                self.log.info("Chrony aquired lock to time source")
-            else:
-                self.log.info("Chrony lost lock to time source")
-
-        if new_is_pps != self._is_pps:
-            if new_is_pps:
-                self.log.info("Chrony locked to high precision GPS PPS signal")
-            else:
-                self.log.info("Chrony lost PPS signal")
-
-        if new_source != self._source:
-            self.log.info(f"Chrony source changed to {new_source}")
-
-        # Update internal state with lock
-        with self._lock:
-            self._stratum = new_stratum
-            self._system_time_offset = new_system_time_offset
-            self._is_locked = new_is_locked
-            self._is_pps = new_is_pps
-            self._source = new_source
-            self._adjusted_offset = new_adjusted_offset
+        # Update state via superclass method
+        self._update_state(
+            stratum=new_stratum,
+            system_time_offset=new_system_time_offset,
+            is_locked=new_is_locked,
+            is_pps=new_is_pps,
+            source=new_source,
+            adjusted_offset=new_adjusted_offset,
+        )
 
     def _exec_cmd(self, cmd: list[str]) -> list[str]:
         """
@@ -163,39 +242,3 @@ class ChronyClient:
             cm = " ".join(cmd)
             self.log.warning(f"Warning: {cm} failed: {p.returncode}")
         return ret
-
-    @property
-    def stratum(self) -> Optional[int]:
-        """Get the stratum level."""
-        with self._lock:
-            return self._stratum
-
-    @property
-    def system_time_offset(self) -> Optional[float]:
-        """Get the system time offset in seconds."""
-        with self._lock:
-            return self._system_time_offset
-
-    @property
-    def is_locked(self) -> bool:
-        """Get whether Chrony is locked to a time source."""
-        with self._lock:
-            return self._is_locked
-
-    @property
-    def is_pps(self) -> bool:
-        """Get whether Chrony is locked to PPS signal."""
-        with self._lock:
-            return self._is_pps
-
-    @property
-    def source(self) -> Optional[str]:
-        """Get the current time source."""
-        with self._lock:
-            return self._source
-
-    @property
-    def adjusted_offset(self) -> Optional[str]:
-        """Get the adjusted offset."""
-        with self._lock:
-            return self._adjusted_offset

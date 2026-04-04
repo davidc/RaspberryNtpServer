@@ -4,18 +4,19 @@ import time
 from datetime import datetime, time as dt_time
 import logging
 import logging.handlers
-from typing import Any, cast
+from typing import Any, Optional, cast
 import yaml
 import os
 
 from displays import Display, create_display
 from gpsd import GpsdClient
-from chrony import ChronyClient
+from chrony import ChronyClient, ChronyCmdClient
+from chrony_socket import ChronySocketClient
 from scrolling_buffer_handler import ScrollingBufferHandler
 
 # from button import Button
 
-CHRONOTRON_VERSION = "3.0.2"
+CHRONOTRON_VERSION = "3.0.3"
 
 ######################################################
 ##                    ATTENTION                     ##
@@ -31,8 +32,8 @@ CHRONOTRON_VERSION = "3.0.2"
 
 # Parsed Configuration with defaults (use chronotron.yaml to configure these)
 backlight_mode: str = "on"  # "on", "off", or "timed"
-backlight_start_time_obj: dt_time | None = None
-backlight_end_time_obj: dt_time | None = None
+backlight_start_time_obj: Optional[dt_time] = None
+backlight_end_time_obj: Optional[dt_time] = None
 display_utc_time: bool = False
 display_refresh_interval: float = 0.25
 gpsd_host: str
@@ -40,7 +41,7 @@ gpsd_port: int
 
 # Runtime
 log: logging.Logger
-log_buffer: ScrollingBufferHandler
+log_buffer: Optional[ScrollingBufferHandler]
 
 displays: list[Display] = []
 gps_client: GpsdClient
@@ -56,6 +57,7 @@ def load_configuration(
     If the file doesn't exist in the current directory, a basic default will be used.
     TODO add a command line arg -f to specify the config file location
     """
+    # Default configuration if no YAML file is found. Matches previous hardcoded defaults.
     default_config = {
         "options": {
             "backlight": {
@@ -75,6 +77,9 @@ def load_configuration(
                 "rows": 4,
             }
         ],
+        "chrony": {
+            "method": "socket",
+        },
     }
 
     # Check if config file exists
@@ -158,12 +163,25 @@ def parse_configuration(config: dict[str, Any]):
     gpsd_host = gpsd_config.get("host", None)
     gpsd_port = gpsd_config.get("port", None)
     gpsd_update_interval = gpsd_config.get("data_update_interval", None)
-    gpsd_client = GpsdClient(host=gpsd_host, port=gpsd_port, update_interval=gpsd_update_interval)
+    gpsd_client = GpsdClient(
+        host=gpsd_host, port=gpsd_port, update_interval=gpsd_update_interval
+    )
 
     # chrony config
     chrony_config = config.get("chrony", {})
     chrony_update_interval = chrony_config.get("data_update_interval", None)
-    chrony_client = ChronyClient(update_interval=chrony_update_interval)
+    chrony_method = chrony_config.get("method", "socket")
+
+    if chrony_method == "socket":
+        chrony_host = chrony_config.get("host", None)
+        chrony_port = chrony_config.get("port", None)
+        chrony_client = ChronySocketClient(
+            update_interval=chrony_update_interval, host=chrony_host, port=chrony_port
+        )
+    elif chrony_method == "chronyc":
+        chrony_client = ChronyCmdClient(update_interval=chrony_update_interval)
+    else:
+        raise ValueError(f"Invalid chrony method: {chrony_method}")
 
     if backlight_mode != "timed":
         log.info("Backlight will be always " + backlight_mode.upper())
@@ -199,7 +217,6 @@ def init():
     logging.basicConfig(level=logging.INFO)
     global log
     log = logging.getLogger("chronotron")
-    # log.setLevel("INFO")
 
     # Store initial log messages in a buffer until displays are initialised, so they can be available to rich_terminal
     global log_buffer
@@ -217,8 +234,12 @@ def init():
     if not log_buffer.is_wanted:
         root_logger.removeHandler(log_buffer)
         log_buffer.close()
+        log_buffer = None
 
-    log.info(f"Chronotron version {CHRONOTRON_VERSION} started with {len(displays)} display{len(displays) != 1 and 's' or ''}")
+    log.info(
+        f"Chronotron version {CHRONOTRON_VERSION} started with {len(displays)} display{len(displays) != 1 and 's' or ''}"
+    )
+
 
 def main_loop():
     last_time = ""
@@ -251,6 +272,8 @@ def main_loop():
             time_str: str = time.strftime("%Y-%m-%d  %H:%M:%S", time.gmtime())
         else:
             time_str = time.strftime("%Y-%m-%d  %H:%M:%S")
+
+        # TODO this is limiting us to 1 fps
         if time_str != last_time:
             # Set backlight state for all displays
             want_backlight = is_backlight_wanted()
@@ -326,9 +349,14 @@ def main_loop():
                 display.print_row(1, offs)
                 display.print_row(2, source_str)
                 display.print_row(3, last_str)
+
         time.sleep(display_refresh_interval)
 
 
-init()
+if __name__ == "__main__":
+    init()
 
-main_loop()
+    try:
+        main_loop()
+    except KeyboardInterrupt:
+        pass
