@@ -325,7 +325,7 @@ class ChronySocketClient(ChronyClient):
 
             # Receive reply (UDP datagram) - accept from any address
             # TODO keep receiving until we get a reply matching our sequence number, or timeout after a certain period
-            reply, addr = self._sock.recvfrom(4096)  # pyright: ignore[reportOptionalMemberAccess] # Max UDP packet size
+            reply, _ = self._sock.recvfrom(4096)  # pyright: ignore[reportOptionalMemberAccess] # Max UDP packet size
 
             if len(reply) < CMD_REPLY_HEADER_SIZE:
                 raise RuntimeError(
@@ -602,6 +602,8 @@ class ChronySocketClient(ChronyClient):
             if (
                 source["mode"] == RPY_SD_MD_REF
                 and source["state"] == RPY_SD_ST_SELECTED
+                and "ref" in source
+                and source["ref"] is not None
                 and source["ref"][:3] == "PPS"
             ):
                 new_is_locked = True
@@ -623,7 +625,17 @@ class ChronySocketClient(ChronyClient):
                 ):
                     new_is_locked = True
                     new_is_pps = True
-                    new_source = source["ref"]
+
+                    if "ip_addr" in source:
+                        try:
+                            new_source = socket.gethostbyaddr(str(source["ip_addr"]))[0]
+                        except Exception as e:
+                            self.log.debug(
+                                f"Unable to resolve {source['ip_addr']}: {e}"
+                            )
+                            new_source = str(source["ip_addr"])
+                    else:
+                        new_source = "Unknown"
 
                     new_adjusted_offset = format_signed_nanoseconds(
                         source["latest_meas"]
