@@ -114,7 +114,7 @@ class RichTerminalDisplay(Display):
 
     def _handle_resize(self, signum: int, frame) -> None:
         """Handle terminal resize by redrawing the display."""
-        logging.info(
+        logging.debug(
             "Display resized to {}x{}".format(
                 self.console.size.width, self.console.size.height
             )
@@ -156,9 +156,6 @@ class RichTerminalDisplay(Display):
     def _create_lcd_panel(self) -> Panel:
         """Create the LCD panel."""
 
-        # self._lcd_text = self._get_lcd_text()
-        # self._lcd_live = Live(self._lcd_text, auto_refresh=False)
-
         # Create panel with border matching log panel
         panel = Panel(
             self._create_lcd_text(),
@@ -193,7 +190,7 @@ class RichTerminalDisplay(Display):
         table = self._create_log_table()
 
         panel = Panel(
-            table, title="[bold]Log Messages[/bold]", border_style=STYLE_PANEL
+            table, title="[bold]Log Messages (latest first)[/bold]", border_style=STYLE_PANEL
         )
         return panel
 
@@ -206,11 +203,12 @@ class RichTerminalDisplay(Display):
         table.add_column("Message", style="white")
 
         if self.log_buffer:
-            # TODO if a log wraps over multiple lines, we need fewer than max_messages; figure out how to scroll panel to the bottom
+            # If individual log entries wrap over multiple lines, we need fewer than max_messages; rich does not let us scroll the table
+            # to the bottom which is why we're displaying messages backwards
             max_messages = self._calculate_max_log_messages()
             recent_records = self.log_buffer.get_recent_records(max_messages)
 
-            for record in recent_records:
+            for record in reversed(recent_records):
                 level = record.levelname
                 message = record.getMessage()
                 timestamp = time.strftime("%H:%M:%S", time.localtime(record.created))
