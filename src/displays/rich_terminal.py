@@ -10,7 +10,7 @@ from rich.console import Console
 from rich.text import Text
 from rich.panel import Panel
 from rich.table import Table
-from rich.layout import Layout
+from rich.layout import Layout as RichLayout
 from rich.live import Live
 from rich.align import Align
 
@@ -34,6 +34,8 @@ class RichTerminalDisplay(Display):
         log_buffer=None,
     ):
         """Initialise the Rich terminal display."""
+        super().__init__()
+
         # Prevent multiple instances
         RichTerminalDisplay._instance_count += 1
         if RichTerminalDisplay._instance_count > 1:
@@ -54,28 +56,31 @@ class RichTerminalDisplay(Display):
         self.buffer: list[str] = [" " * cols for _ in range(rows)]
 
         self.console = Console()
-        # Track if LCD needs redraw
         self._lcd_dirty = True
         self._logs_dirty = True
 
         # Set up Rich layout
-        self.layout = Layout()
-        self.layout.split_column(
-            Layout(name="lcd_container", size=self.rows + 2),  # Fixed height for LCD
-            Layout(name="logs"),  # Logs take remaining space
+        self.rich_layout = RichLayout()
+        self.rich_layout.split_column(
+            RichLayout(
+                name="lcd_container", size=self.rows + 2
+            ),  # Fixed height for LCD
+            RichLayout(name="logs"),  # Logs take remaining space
         )
 
         self._lcd_panel: Panel = self._create_lcd_panel()
 
         # Set up LCD container with horizontal centering
-        self.layout["lcd_container"].split_row(
-            Layout(name="lcd_left", ratio=1),  # Flexible space
-            Layout(self._lcd_panel, name="lcd", size=self.cols + 4),  # LCD panel width
-            Layout(name="lcd_right", ratio=1),  # Flexible space
+        self.rich_layout["lcd_container"].split_row(
+            RichLayout(name="lcd_left", ratio=1),  # Flexible space
+            RichLayout(
+                self._lcd_panel, name="lcd", size=self.cols + 4
+            ),  # LCD panel width
+            RichLayout(name="lcd_right", ratio=1),  # Flexible space
         )
 
-        self.layout["lcd_left"].update("")  # Empty left space
-        self.layout["lcd_right"].update("")  # Empty right space
+        self.rich_layout["lcd_left"].update("")  # Empty left space
+        self.rich_layout["lcd_right"].update("")  # Empty right space
 
         self.live: Optional[Live] = None
 
@@ -94,6 +99,7 @@ class RichTerminalDisplay(Display):
             atexit.register(self._cleanup)
 
             self.log_buffer = log_buffer
+            
             if self.log_buffer:
                 self.log_buffer.wanted()
                 self.log_buffer.add_listener(self._on_log_update)
@@ -190,7 +196,9 @@ class RichTerminalDisplay(Display):
         table = self._create_log_table()
 
         panel = Panel(
-            table, title="[bold]Log Messages (latest first)[/bold]", border_style=STYLE_PANEL
+            table,
+            title="[bold]Log Messages (latest first)[/bold]",
+            border_style=STYLE_PANEL,
         )
         return panel
 
@@ -227,12 +235,12 @@ class RichTerminalDisplay(Display):
         # Update only the panels that have changed
         updated = False
         if self._lcd_dirty:
-            self.layout["lcd"].update(self._create_lcd_panel())
+            self.rich_layout["lcd"].update(self._create_lcd_panel())
             self._lcd_dirty = False
             updated = True
 
         if self._logs_dirty:
-            self.layout["logs"].update(self._create_log_panel())
+            self.rich_layout["logs"].update(self._create_log_panel())
             self._logs_dirty = False
             updated = True
 
@@ -241,23 +249,24 @@ class RichTerminalDisplay(Display):
             # Start Live display if not already started
             if self.live is None:
                 self.live = Live(
-                    self.layout, console=self.console, screen=True, auto_refresh=False
+                    self.rich_layout, console=self.console, screen=True, auto_refresh=False
                 )
                 self.live.start()
             else:
                 # Refresh the existing live display
                 self.live.refresh()
 
-    def print_row(self, row: int, text: str) -> None:
-        if row < 0 or row >= self.rows:
-            return
+    def update(self) -> None:
+        for row in range(self.rows):
+            text_line = self._layout.get_line(row, self.cols)
 
-        text_line = text[: self.cols].ljust(self.cols, " ")
+            # Only update if the row has actually changed
+            if self.buffer[row] != text_line:
+                self.buffer[row] = text_line
+                self._lcd_dirty = True
 
-        # Only update if the row has actually changed
-        if self.buffer[row] != text_line:
-            self.buffer[row] = text_line
-            self._lcd_dirty = True
+        # Update all rows at once
+        if self._lcd_dirty:
             self._update_display()
 
     def set_backlight(self, state: bool) -> None:

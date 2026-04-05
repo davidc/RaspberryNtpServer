@@ -9,6 +9,7 @@ import yaml
 import os
 
 from displays import Display, create_display
+from layouts import Layout, create_layout
 from gpsd import GpsdClient
 from chrony import ChronyClient, ChronyCmdClient
 from chrony_socket import ChronySocketClient
@@ -16,7 +17,7 @@ from scrolling_buffer_handler import ScrollingBufferHandler
 
 # from button import Button
 
-CHRONOTRON_VERSION = "3.0.3"
+CHRONOTRON_VERSION = "3.0.4"
 
 ######################################################
 ##                    ATTENTION                     ##
@@ -44,6 +45,7 @@ log: logging.Logger
 log_buffer: Optional[ScrollingBufferHandler]
 
 displays: list[Display] = []
+layouts_dict: dict[str, Layout] = {}
 gps_client: GpsdClient
 chrony_client: ChronyClient
 
@@ -66,6 +68,9 @@ def load_configuration(
             },
             "display_utc_time": False,
         },
+        "layouts": [
+            {"id": "default", "type": "DefaultFourLineLayout"}
+        ],
         "displays": [
             {
                 "type": "hd44780",
@@ -135,12 +140,45 @@ def parse_configuration(config: dict[str, Any]):
             f"Invalid backlight configuration type: {type(backlight_config)}. Must be boolean or dictionary."
         )
 
+    # Parse layout configuration
+    global layouts_dict
+    layouts_config = config.get("layouts")
+
+    # If no layouts specified, install default
+    if not layouts_config:
+        layouts_config = [{"id": "default", "type": "DefaultFourLineLayout"}]
+
+    for layout_config in layouts_config:
+        layout_id = layout_config.get("id")
+        if not layout_id:
+            raise ValueError("Layout configuration must have an 'id' field")
+
+        layout = create_layout(layout_config)
+        if layout is not None:
+            layouts_dict[layout_id] = layout
+            log.debug(f"Initialised layout: {layout_id}")
+        else:
+            raise RuntimeError(f"Failed to initialise layout {layout_id}")
+
+    if not layouts_dict:
+        raise RuntimeError("No layouts were successfully initialised, exiting")
+
+    log.info(f"Initialised {len(layouts_dict)} layout{len(layouts_dict) != 1 and 's' or ''}")
+
     # Initialise displays from configuration
     displays_config = config.get("displays", [])
 
     for display_config in displays_config:
+        # Get the layout for this display
+        layout_id = display_config.get("layout", "default")
+        if layout_id not in layouts_dict:
+            raise ValueError(f"Display references unknown layout {layout_id}")
+        layout = layouts_dict[layout_id]
+
         display = create_display(display_config, log_buffer)
+
         if display is not None:
+            display.set_layout(layout)
             displays.append(display)
             # log.info(f"Initialised display: {display_config.get('type', 'unknown')}")
         else:
@@ -244,7 +282,6 @@ def init():
 def main_loop():
     last_time = ""
     last_backlight = False
-    last_offset = ""
     select_state = 0
     select_states = 2
     trigger_time = 0
@@ -289,6 +326,7 @@ def main_loop():
 
             # Get statistics from both clients
             stats: dict[str, Any] = {}  # pyright:ignore[reportExplicitAny]
+            stats["current_time"] = time.gmtime() if display_utc_time else time.localtime()
             stats["mode"] = gpsd_client.mode
             stats["sats"] = gpsd_client.sats
             stats["sats_used"] = gpsd_client.sats_used
@@ -299,56 +337,13 @@ def main_loop():
             stats["source"] = chrony_client.source
             stats["adjusted_offset"] = chrony_client.adjusted_offset
 
-            # if select_state == 0:
-            #     lcd.print_row(0, time_str)
-            # else:
-            #     if time.time() - trigger_time > 10:
-            #         select_state = 0
-            #     lcd.print_row(0, "Select 1")
-
-            offset: str | None = cast(str | None, stats["system_time_offset"])
-            offs = "            "
-            if offset is not None:
-                if stats["stratum"] is None:
-                    offs = "S[?]"
-                else:
-                    offs = f"S[{stats['stratum']}]"
-                offs += " {:+12.9f}sec".format(offset)
-                if offs != last_offset:
-                    last_offset = offs
-
-            if stats["sats"] is None:
-                sats = "--"
-            else:
-                sats = f"{stats['sats']:02}"
-            if stats["sats_used"] is None:
-                sats_used = "--"
-            else:
-                sats_used = f"{stats['sats_used']:02}"
-            if stats["mode"] is None:
-                mode = "-"
-            else:
-                mode = f"{stats['mode']:01}"
-            if stats["is_locked"]:
-                source_str = "L[*] "
-            else:
-                source_str = "L[ ] "
-            if stats["source"] is None:
-                source_str += "                    "
-            else:
-                source_str += cast(str, stats["source"])
-            if stats["adjusted_offset"] is None:
-                dev_str = "       "
-            else:
-                dev_str = f"{stats['adjusted_offset']:>7}"
-            last_str = f"F[{mode}] {sats_used}/{sats}   {dev_str}"
+            # Update all configured layouts with the latest stats
+            for layout in layouts_dict.values():
+                layout.update(stats)
 
             # Send display output to all configured displays
             for display in displays:
-                display.print_row(0, time_str)
-                display.print_row(1, offs)
-                display.print_row(2, source_str)
-                display.print_row(3, last_str)
+                display.update()
 
         time.sleep(display_refresh_interval)
 

@@ -5,6 +5,7 @@ import logging
 import smbus
 import copy
 from .display import Display
+from layouts import Layout
 
 
 class HD44780Display(Display):
@@ -21,6 +22,7 @@ class HD44780Display(Display):
         ada: bool | None = None,
         fast_lcd: bool | None = None,
     ):
+        super().__init__()
         """
         Args:
             sm_bus: I2C bus number (should be 1 for all Raspberry PI except Raspberry 1)
@@ -172,7 +174,7 @@ class HD44780Display(Display):
         for i in range(self.cols):
             self.write(ord(self.screen_buf[row][i]), self.type_data)
 
-    def print_row(self, row: int, text: str) -> None:
+    def _print_row(self, row: int, text: str) -> None:
         """Print row to buffer and display"""
         if row < 0:
             row = 0
@@ -181,6 +183,10 @@ class HD44780Display(Display):
         text = text[: self.cols].ljust(self.cols, " ")
         self.screen_buf[row] = [text[i] for i in range(len(text))]
         self.write_row(row)
+
+    def update(self) -> None:
+        for row in range(self.rows):
+            self._print_row(row, self._layout.get_line(row, self.cols))
 
     def print_at(self, row: int, col: int, text: str):
         """Print to buffer and display at given coordinates"""

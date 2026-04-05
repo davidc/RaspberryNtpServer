@@ -5,6 +5,7 @@ import logging
 from datetime import datetime
 import sys
 from .display import Display
+from layouts import Layout
 
 
 class FileOutputDisplay(Display):
@@ -26,6 +27,7 @@ class FileOutputDisplay(Display):
             cols: Display width in characters (for formatting)
             rows: Display height in characters (for reference)
         """
+        super().__init__()
 
         # Defaults:
         file_path = file_path or "-"
@@ -64,7 +66,7 @@ class FileOutputDisplay(Display):
             if f is not sys.stdout:
                 f.close()
 
-    def print_row(self, row: int, text: str) -> None:
+    def _print_row(self, row: int, text: str) -> None:
         """Write a row to the output file.
 
         Args:
@@ -84,6 +86,10 @@ class FileOutputDisplay(Display):
         except Exception as e:
             self.log.error(f"Failed to write to {self.file_path}: {e}")
 
+    def update(self) -> None:
+        for row in range(self.rows):
+            self._print_row(row, self._layout.get_line(row, self.cols))
+
     def set_backlight(self, state: bool) -> None:
         """Track backlight state (logged with each row output).
 
@@ -97,18 +103,3 @@ class FileOutputDisplay(Display):
                 f.write(f"[{datetime.now().isoformat()}] Backlight {status}\n")
         except Exception as e:
             self.log.error(f"Failed to write to {self.file_path}: {e}")
-
-
-if __name__ == "__main__":
-    """Test the FileOutputDisplay"""
-    logging.basicConfig(level=logging.INFO)
-
-    display = FileOutputDisplay("test_display.log")
-    print(f"Writing test output to test_display.log...")
-    display.set_backlight(True)
-    display.print_row(0, "2024-03-31  12:34:56")
-    display.print_row(1, "S[1]   +0.000123456sec")
-    display.print_row(2, "L[*] localhost")
-    display.print_row(3, "F[3] 12/15   +234ns")
-    display.set_backlight(False)
-    print("Test complete!")
