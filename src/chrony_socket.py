@@ -610,9 +610,7 @@ class ChronySocketClient(ChronyClient):
                     else:
                         new_source = "Unknown"
 
-                    new_adjusted_offset = format_signed_nanoseconds(
-                        source["latest_meas"]
-                    )  # format to string to match for now
+                    new_adjusted_offset = source["latest_meas"]
                     break
 
         # Update state via superclass method
