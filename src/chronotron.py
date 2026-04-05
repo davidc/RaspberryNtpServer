@@ -194,6 +194,15 @@ def parse_configuration(config: dict[str, Any]):
         "Initialised %d display%s" % (len(displays), "" if len(displays) == 1 else "s")
     )
 
+    # Remove layouts that are not referenced by any display
+    referenced_layout_ids = {id(display._layout) for display in displays}
+    unreferenced_ids = [
+        layout_id for layout_id, layout in layouts_dict.items() if id(layout) not in referenced_layout_ids
+    ]
+    for layout_id in unreferenced_ids:
+        log.warning(f"Layout '{layout_id}' is not referenced by any display and will be removed")
+        del layouts_dict[layout_id]
+
     # gpsd config
     global gpsd_client
     global chrony_client

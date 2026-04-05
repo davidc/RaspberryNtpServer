@@ -125,6 +125,94 @@ options:
   display_refresh_interval: 0.1  # Update display every 0.1 seconds
 ```
 
+**layouts** - Configure the layout(s) used to format display content. A layout determines how statistics are presented on the display. Multiple displays can share a single layout, or each display can use a different one. If `layouts:` is omitted, a single `DefaultFourLineLayout` with `id: default` is created automatically.
+
+Each layout entry requires:
+- `id` — a unique identifier used to reference this layout from displays
+- `type` — the layout type: `DefaultFourLineLayout` or `CustomLayout`
+
+### `DefaultFourLineLayout`
+
+The default layout formats four lines for a 4×20 LCD (or any display with at least 4 rows). Content adapts to the available column width:
+
+- **Line 0**: Date and time, with the UTC offset (e.g. `+0200`) appended if there is room
+- **Line 1**: Stratum (`S[n]`) and system time offset from NTP
+- **Line 2**: Lock state (`L[*]` / `L[ ]`) and the active NTP/PPS source name
+- **Line 3**: GPS fix mode (`F[n]`), satellite count (used/total), and the estimated error of the active chrony source
+
+```yaml
+layouts:
+  - id: default
+    type: DefaultFourLineLayout
+```
+
+### `CustomLayout`
+
+`CustomLayout` lets you define the content of each line using template strings. Each template is evaluated as a Python f-string with access to the current statistics and helper functions.
+
+```yaml
+layouts:
+  - id: my_layout
+    type: CustomLayout
+    lines:
+      - left: "{time.strftime('%Y-%m-%d', current_time)} "
+        right: "{time.strftime('%H:%M:%S', current_time)}"
+      - left: "S[{stratum or '?'}] "
+        right: "{f'{system_time_offset:+.9f}' if system_time_offset else '?'}sec"
+      - "L[{'*' if is_locked else ' '}] {source}"
+      - left: "F[{mode}] {sats_used}/{sats} "
+        right: "{layout._format_signed_offset(adjusted_offset) or '?'}"
+```
+
+Each line can be either:
+- A **string** — evaluated as an f-string template, left-justified
+- A **dict** with `left` and `right` keys, each a template, left- and right-justified on the display according to its width
+
+**Available template variables:**
+
+| Variable | Type | Description |
+|---|---|---|
+| `current_time` | `time.struct_time` | Current local or UTC time |
+| `stratum` | `int \| None` | NTP stratum level |
+| `system_time_offset` | `float \| None` | System clock offset from NTP (seconds) |
+| `is_locked` | `bool \| None` | NTP synchronisation lock status |
+| `is_pps` | `bool \| None` | True if locked to a PPS signal |
+| `source` | `str \| None` | Active NTP/PPS source name |
+| `adjusted_offset` | `float \| None` | Estimated error of the active chrony source (seconds) |
+| `mode` | `str \| None` | GPS fix mode: `None`/`'1'`=no fix, `'2'`=2D, `'3'`=3D |
+| `sats` | `int \| None` | Total GPS satellites in view |
+| `sats_used` | `int \| None` | GPS satellites used in fix |
+| `time` | module | The Python `time` module (e.g. `time.strftime(...)`) |
+| `layout` | `CustomLayout` | The layout instance, for calling helper methods |
+
+**Useful layout helper method:**
+- `layout._format_signed_offset(seconds)` — formats a float number of seconds as a compact signed string such as `+186ns`, `-1.2ms`, or `+3s`
+
+### Using multiple layouts
+
+Each display can reference a layout by `id`. If no `layout:` key is given on a display entry, it defaults to the layout with `id: default`.
+
+```yaml
+layouts:
+  - id: default
+    type: DefaultFourLineLayout
+  - id: compact
+    type: CustomLayout
+    lines:
+      - "{time.strftime('%H:%M:%S', current_time)}"
+      - "S[{stratum or '?'}]"
+      - "L[{'*' if is_locked else ' '}] {source or ''}"
+      - "F[{mode or '-'}] {sats_used or '--'}/{sats or '--'}"
+
+displays:
+  - type: hd44780
+    i2c_address: 0x27
+    layout: default
+  - type: file_output
+    file: /tmp/compact.txt
+    layout: compact
+```
+
 **displays** - Configure one or more displays. You **must** specify a `displays` array, with at least one display entry, even if you only have one display. Only specify values that differ from defaults; any omitted keys will use default values.
 
 If you have the standard HD44780 display, you can omit a `chronotron.yaml` file as the defaults include a HD44780 display on I2C address 0x27 on bus 1. However if you create this file at all, you will need to specify displays.
@@ -236,7 +324,7 @@ pip install -r requirements.txt
 mkdir -p /opt/chronotron
 chown -R $USER:$USER /opt/chronotron
 # Copy the application files:
-cp -r button.py chronotron.py chronotron.yaml displays/ /opt/chronotron
+cp -r button.py chronotron.py chronotron.yaml layouts/ displays/ /opt/chronotron
 ```
 
 4. Install the systemd service
@@ -354,6 +442,11 @@ The `chronotron.py` service checks periodically `chronyc` for NTP statistics (`c
 
 - `chronotron.yaml` - Main configuration file (YAML format) for display settings and timing
 - `chronotron.py` - Main application that reads statistics and sends output to configured displays
+- `layouts/` - Directory containing layout implementations:
+  - `layouts/layout.py` - Abstract base class defining the layout interface and shared helpers
+  - `layouts/default_four_line.py` - `DefaultFourLineLayout`: standard 4-line format
+  - `layouts/custom_layout.py` - `CustomLayout`: fully configurable line templates
+  - `layouts/__init__.py` - Layout factory that instantiates the correct layout based on config
 - `displays/` - Directory containing display backend implementations:
   - `displays/display.py` - Abstract base class defining the display interface
   - `displays/hd44780.py` - HD44780 LCD driver via I2C (supports both PCF8574 and Adafruit MCP23008)
