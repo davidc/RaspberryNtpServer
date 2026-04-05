@@ -68,9 +68,7 @@ def load_configuration(
             },
             "display_utc_time": False,
         },
-        "layouts": [
-            {"id": "default", "type": "DefaultFourLineLayout"}
-        ],
+        "layouts": [{"id": "default", "type": "DefaultFourLineLayout"}],
         "displays": [
             {
                 "type": "hd44780",
@@ -163,7 +161,9 @@ def parse_configuration(config: dict[str, Any]):
     if not layouts_dict:
         raise RuntimeError("No layouts were successfully initialised, exiting")
 
-    log.info(f"Initialised {len(layouts_dict)} layout{len(layouts_dict) != 1 and 's' or ''}")
+    log.info(
+        f"Initialised {len(layouts_dict)} layout{len(layouts_dict) != 1 and 's' or ''}"
+    )
 
     # Initialise displays from configuration
     displays_config = config.get("displays", [])
@@ -280,8 +280,7 @@ def init():
 
 
 def main_loop():
-    last_time = ""
-    last_backlight = False
+    last_backlight: Optional[bool] = None
     select_state = 0
     select_states = 2
     trigger_time = 0
@@ -305,45 +304,35 @@ def main_loop():
     # bt = Button([(27, "blue", select_button), (22, "black", main_button)])
 
     while True:
-        if display_utc_time is True:
-            time_str: str = time.strftime("%Y-%m-%d  %H:%M:%S", time.gmtime())
-        else:
-            time_str = time.strftime("%Y-%m-%d  %H:%M:%S")
-
-        # TODO this is limiting us to 1 fps
-        if time_str != last_time:
-            # Set backlight state for all displays
-            want_backlight = is_backlight_wanted()
-            if (
-                want_backlight != last_backlight or last_time == ""
-            ):  # last_time is "" at startup, so always set initial state
-                last_backlight = want_backlight
-                log.info("Turning backlight " + ("ON" if want_backlight else "OFF"))
-                for display in displays:
-                    display.set_backlight(want_backlight)
-
-            last_time = time_str
-
-            # Get statistics from both clients
-            stats: dict[str, Any] = {}  # pyright:ignore[reportExplicitAny]
-            stats["current_time"] = time.gmtime() if display_utc_time else time.localtime()
-            stats["mode"] = gpsd_client.mode
-            stats["sats"] = gpsd_client.sats
-            stats["sats_used"] = gpsd_client.sats_used
-            stats["stratum"] = chrony_client.stratum
-            stats["system_time_offset"] = chrony_client.system_time_offset
-            stats["is_locked"] = chrony_client.is_locked
-            stats["is_pps"] = chrony_client.is_pps
-            stats["source"] = chrony_client.source
-            stats["adjusted_offset"] = chrony_client.adjusted_offset
-
-            # Update all configured layouts with the latest stats
-            for layout in layouts_dict.values():
-                layout.update(stats)
-
-            # Send display output to all configured displays
+        # Set backlight state for all displays
+        want_backlight = is_backlight_wanted()
+        if want_backlight != last_backlight:
+            # set backlight if it's changed or if it's None (set initial state at startup)
+            last_backlight = want_backlight
+            log.info("Turning backlight " + ("ON" if want_backlight else "OFF"))
             for display in displays:
-                display.update()
+                display.set_backlight(want_backlight)
+
+        # Get statistics from both clients
+        stats: dict[str, Any] = {}  # pyright:ignore[reportExplicitAny]
+        stats["current_time"] = time.gmtime() if display_utc_time else time.localtime()
+        stats["mode"] = gpsd_client.mode
+        stats["sats"] = gpsd_client.sats
+        stats["sats_used"] = gpsd_client.sats_used
+        stats["stratum"] = chrony_client.stratum
+        stats["system_time_offset"] = chrony_client.system_time_offset
+        stats["is_locked"] = chrony_client.is_locked
+        stats["is_pps"] = chrony_client.is_pps
+        stats["source"] = chrony_client.source
+        stats["adjusted_offset"] = chrony_client.adjusted_offset
+
+        # Update all configured layouts with the latest stats
+        for layout in layouts_dict.values():
+            layout.update(stats)
+
+        # Send display output to all configured displays
+        for display in displays:
+            display.update()
 
         time.sleep(display_refresh_interval)
 
