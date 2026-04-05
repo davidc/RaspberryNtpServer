@@ -2,7 +2,7 @@
 # This file contains all configuration parameters for the chronotron display driver
 
 # Global Options Configuration
-# These settings apply to all displays.
+# These settings apply to all displays and layouts.
 options:
   # Backlight control. Can be "on" (always on), "off" (always off), or a time range dictionary
   backlight: on
@@ -20,11 +20,35 @@ options:
   # Time in seconds between display updates (default: 0.25)
   display_refresh_interval: 0.25
 
+
+# Layout Configuration
+# Layouts are responsible for formatting display content. Multiple displays can share the same layout.
+# You must have at least one. If you don't specify a layout on every display, you need one with id "default".
+layouts:
+  - id: default
+    type: DefaultFourLineLayout
+
+  # Example: Custom layout with configurable line formatting. This example is pretty much identical to chronotron v2's layout.
+  # - id: my_layout
+  #   type: CustomLayout
+  #   lines:
+  #     - left: "{time.strftime('%Y-%m-%d', current_time)} "
+  #       right: "{time.strftime('%H:%M:%S', current_time)}"
+  #     - left: "S[{stratum or '?'}] "
+  #       right: "{system_time_offset:+.9f}sec"
+  #     - "L[{'*' if is_locked else ' '}] {source}"
+  #     - left: "F[{mode:1}] {sats_used}/{sats} "
+  #       right: "{adjusted_offset or '?'}"
+
 # Displays Configuration
 # List of display devices to output status information to. You can use multiple displays simultaneously (e.g. LCD + file logging)
+# Displays Configuration
+# List of display devices to output status information to. You can use multiple displays simultaneously (e.g. LCD + file logging)
+# Each display can reference a layout by id. If no layout is specified, defaults to "default".
 displays:
   # HD44780-based LCD Display via I2C (supports both PCF8574 and Adafruit MCP23008 I2C converters)
   # - type: "hd44780"
+  #   layout: default   # Reference layout by id (optional, defaults to "default")
   #   
   #   # I2C bus number (1 for Raspberry Pi 2+, 0 for Raspberry Pi 1)
   #   sm_bus: 1
@@ -51,6 +75,7 @@ displays:
   # Uncomment below to enable file-based display output for debugging/testing
   # Note: this will grow without bounds and thrash your SD card, so is only for testing
   # - type: "file_output"
+  #   layout: my_layout  # Reference layout by id (optional, defaults to "default")
   #   file: "-"  # Path to output file, relative to cwd if not absolute. use "-" for stdout
   #   cols: 20
   #   rows: 4

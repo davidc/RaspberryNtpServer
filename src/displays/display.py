@@ -3,6 +3,8 @@
 from abc import ABC, abstractmethod
 from typing import Any
 
+from layouts import Layout
+
 
 class Display(ABC):
     """Abstract base class for display hardware implementations.
@@ -12,15 +14,11 @@ class Display(ABC):
     The constructor should raise an exception if initialization fails (e.g. hardware not found).
     """
 
-    @abstractmethod
-    def print_row(self, row: int, text: str) -> None:
-        """Print text to a specific row on the display.
+    def __init__(self):
+        self._layout: Layout
 
-        Args:
-            row: Row number (0-based indexing)
-            text: Text to display (should be padded/truncated to display width)
-        """
-        pass
+    def set_layout(self, layout: Layout):
+        self._layout = layout
 
     @abstractmethod
     def set_backlight(self, state: bool) -> None:
@@ -29,4 +27,9 @@ class Display(ABC):
         Args:
             state: True to turn on, False to turn off
         """
+        pass
+
+    @abstractmethod
+    def update(self) -> None:
+        """Update the display."""
         pass
