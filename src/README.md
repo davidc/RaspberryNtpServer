@@ -365,6 +365,10 @@ The `chronotron.py` service checks periodically `chronyc` for NTP statistics (`c
 
 ## History
 
+- 2026-04-05: 3.0.4: Refactor layout into a layout class hierarchy.
+- 2026-04-05: 3.0.4: Add a DefaultFourLineLayout that is roughly the same as before but has consistent offset formatting and adds UTC offset if there's space.
+- 2026-04-05: 3.0.4: Add a CustomLayout that can be fully configured, add an example for a display that is identical to previous layout.
+- 2026-04-05: 3.0.4: Fix display refresh interval being artificially limited to 1.
 - 2026-04-04: 3.0.3: Refactor chrony client to support both current chronyc method and a new method that communicates with chronyd directly to avoid hammering the system with processes. This is now the default; to revert to using "chronyc", see documentation above.
 - 2026-04-04: 3.0.2: Make display_refresh_interval and gpsd and chrony data_update_interval configurable.
 - 2026-04-01: 3.0.1: Refactor gpsd and chrony clients into classes, move chronyclient into a thread too, make gpsd host and port configurable.

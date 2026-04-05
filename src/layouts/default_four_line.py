@@ -40,11 +40,11 @@ class DefaultFourLineLayout(Layout):
 
         basic_width = len(date_str) + len(time_str)
 
-        full_offset = self._format_utc_offset(current_time.tm_gmtoff)
+        full_utc_offset = self._format_utc_offset(current_time.tm_gmtoff)
 
-        if basic_width + 1 + len(full_offset) <= cols:
+        if basic_width + 1 + len(full_utc_offset) <= cols:
             # We have space for full offset
-            time_str += " " + full_offset
+            time_str += " " + full_utc_offset
         elif current_time.tm_gmtoff == 0 and basic_width + 1 <= cols:
             # We have space for a zulu marker and we're in UTC
             time_str += "Z"
@@ -62,7 +62,7 @@ class DefaultFourLineLayout(Layout):
         if offset is None:
             offset_str = "?"
         else:
-            offset_str = f"{offset:+.9f}sec"
+            offset_str = self._format_signed_offset(offset)
 
         return self._format_justified_line(stratum_str + " ", offset_str, cols)
 
@@ -94,7 +94,7 @@ class DefaultFourLineLayout(Layout):
         if adjusted_offset is None:
             dev_str = "?"
         else:
-            dev_str = f"{adjusted_offset}"
+            dev_str = self._format_signed_offset(adjusted_offset)
 
         return self._format_justified_line(
             mode_str + " " + sats_str + " ", dev_str, cols

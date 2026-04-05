@@ -36,7 +36,7 @@ backlight_mode: str = "on"  # "on", "off", or "timed"
 backlight_start_time_obj: Optional[dt_time] = None
 backlight_end_time_obj: Optional[dt_time] = None
 display_utc_time: bool = False
-display_refresh_interval: float = 0.25
+display_refresh_interval: float = 0.5
 gpsd_host: str
 gpsd_port: int
 
@@ -111,7 +111,7 @@ def parse_configuration(config: dict[str, Any]):
     display_utc_time = options.get("display_utc_time", False)
 
     global display_refresh_interval
-    display_refresh_interval = options.get("display_refresh_interval", 0.25)
+    display_refresh_interval = options.get("display_refresh_interval", 0.5)
 
     global backlight_mode
     # Parse backlight configuration

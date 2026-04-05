@@ -7,7 +7,7 @@ import logging
 import threading
 import time
 from abc import ABC, abstractmethod
-from typing import Any, Optional
+from typing import Optional
 
 
 class ChronyClient(ABC):
@@ -29,7 +29,7 @@ class ChronyClient(ABC):
         self._is_locked: bool = False
         self._is_pps: bool = False
         self._source: Optional[str] = None
-        self._adjusted_offset: Optional[str] = None
+        self._adjusted_offset: Optional[float] = None
 
     @property
     def stratum(self) -> Optional[int]:
@@ -62,7 +62,7 @@ class ChronyClient(ABC):
             return self._source
 
     @property
-    def adjusted_offset(self) -> Optional[str]:
+    def adjusted_offset(self) -> Optional[float]:
         """Get the adjusted offset."""
         with self._lock:
             return self._adjusted_offset
@@ -74,7 +74,7 @@ class ChronyClient(ABC):
         is_locked: bool,
         is_pps: bool,
         source: Optional[str],
-        adjusted_offset: Optional[str],
+        adjusted_offset: Optional[float],
     ) -> None:
         """
         Update internal state and log significant changes. For use by subclasses only.
@@ -91,9 +91,7 @@ class ChronyClient(ABC):
         if stratum != self._stratum:
             old_stratum_str = self._stratum if self._stratum is not None else "None"
             new_stratum_str = str(stratum) if stratum is not None else "None"
-            self.log.info(
-                f"Chrony stratum changed from {old_stratum_str} to {new_stratum_str}"
-            )
+            self.log.info(f"Chrony stratum changed from {old_stratum_str} to {new_stratum_str}")
 
         if source != self._source:
             self.log.info(f"Chrony source changed to {source}")
@@ -151,6 +149,34 @@ class ChronyCmdClient(ChronyClient):
             self.log.info("Waiting 5 seconds before retrying chronyc...")
             time.sleep(5)
 
+    def _parse_offset(self, offset_str: str) -> Optional[float]:
+        """Parse an offset string from chronyc output, which may be in seconds or nanoseconds.
+
+        Args:
+            offset_str: Offset string (e.g. "+13sec" or "+123ns")
+
+        Returns:
+            Offset in seconds as a float, or None if parsing fails
+        """
+        if offset_str.endswith("ns"):
+            return float(offset_str[:-2]) / 1e9
+        elif offset_str.endswith("us"):
+            return float(offset_str[:-2]) / 1e6
+        elif offset_str.endswith("ms"):
+            return float(offset_str[:-2]) / 1e3
+        elif offset_str.endswith("s"):
+            return float(offset_str[:-1])
+        elif offset_str.endswith("m"):
+            return float(offset_str[:-1]) * 60
+        elif offset_str.endswith("h"):
+            return float(offset_str[:-1]) * 3600
+        elif offset_str.endswith("d"):
+            return float(offset_str[:-1]) * 3600 * 24
+        elif offset_str.endswith("y"):
+            return float(offset_str[:-1]) * 3600 * 24 * 365
+        else:
+            return None  # unknown format
+
     def _update_statistics(self) -> None:
         """
         Use chronyc to get current statistics and update internal state.
@@ -192,7 +218,8 @@ class ChronyCmdClient(ChronyClient):
                 new_source = "PPS"
                 # #* PPS0                          0   4   377    22   +271ns[ +385ns] +
                 try:
-                    new_adjusted_offset = line[50:59].strip()
+                    new_adjusted_offset_str = line[50:59].strip()
+                    new_adjusted_offset = self._parse_offset(new_adjusted_offset_str)
                 except IndexError:
                     pass
             else:
@@ -204,7 +231,8 @@ class ChronyCmdClient(ChronyClient):
                     except IndexError:
                         pass
                     try:
-                        new_adjusted_offset = line[50:59].strip()
+                        new_adjusted_offset_str = line[50:59].strip()
+                        new_adjusted_offset = self._parse_offset(new_adjusted_offset_str)
                     except IndexError:
                         pass
 
@@ -229,9 +257,7 @@ class ChronyCmdClient(ChronyClient):
             List of output lines, stripped of trailing whitespace
         """
         ret: list[str] = []
-        p = subprocess.Popen(
-            cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, bufsize=-1
-        )
+        p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, bufsize=-1)
         if p.stdout is None:
             self.log.error(f"Failed to execute {cmd}")
             return []

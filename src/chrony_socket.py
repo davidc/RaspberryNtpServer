@@ -176,31 +176,6 @@ REQ_TRACKING_PADDING = max(
 )
 
 
-def format_signed_nanoseconds(s: float) -> str:
-    # TODO move this to our print code once we're no longer storing strings in our statistics.
-
-    x = abs(s)
-
-    if x < 9999.5e-9:
-        return f"{s * 1e9:+.0f}ns"
-    elif x < 9999.5e-6:
-        return f"{s * 1e6:+.0f}us"
-    elif x < 9999.5e-3:
-        return f"{s * 1e3:+.0f}ms"
-    elif x < 999.5:
-        return f"{s:+.1f}s"
-    elif x < 99999.5:
-        return f"{s:+.0f}s"
-    elif x < 99999.5 * 60:
-        return f"{s / 60:+.0f}m"
-    elif x < 99999.5 * 3600:
-        return f"{s / 3600:+.0f}h"
-    elif x < 99999.5 * 3600 * 24:
-        return f"{s / (3600 * 24):+.0f}d"
-    else:
-        return f"{s / (3600 * 24 * 365):+.0f}y"
-
-
 class ChronySocketClient(ChronyClient):
     """Chrony client implementation using direct socket connection to chronyd."""
 
@@ -610,9 +585,7 @@ class ChronySocketClient(ChronyClient):
                 new_is_pps = True
                 new_source = source["ref"]
 
-                new_adjusted_offset = format_signed_nanoseconds(
-                    source["latest_meas"]
-                )  # format to string to match for now
+                new_adjusted_offset = source["latest_meas"]
 
                 break
 

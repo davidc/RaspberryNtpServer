@@ -17,8 +17,8 @@ options:
   # Display time as UTC instead of local time
   display_utc_time: false
 
-  # Time in seconds between display updates (default: 0.25)
-  display_refresh_interval: 0.25
+  # Time in seconds between display updates (default: 0.5)
+  display_refresh_interval: 0.5
 
 
 # Layout Configuration
@@ -35,10 +35,10 @@ layouts:
   #     - left: "{time.strftime('%Y-%m-%d', current_time)} "
   #       right: "{time.strftime('%H:%M:%S', current_time)}"
   #     - left: "S[{stratum or '?'}] "
-  #       right: "{system_time_offset:+.9f}sec"
+  #       right: "{f'{system_time_offset:+.9f}' if system_time_offset else '?'}sec"
   #     - "L[{'*' if is_locked else ' '}] {source}"
-  #     - left: "F[{mode:1}] {sats_used}/{sats} "
-  #       right: "{adjusted_offset or '?'}"
+  #     - left: "F[{mode}] {sats_used}/{sats} "
+  #       right: "{layout._format_signed_offset(adjusted_offset) or '?'}"
 
 # Displays Configuration
 # List of display devices to output status information to. You can use multiple displays simultaneously (e.g. LCD + file logging)
@@ -98,6 +98,6 @@ gpsd:
 # Settings for NTP synchronisation status monitoring
 chrony:
   method: "socket"        # Method to query chronyd ("socket" or "chronyc", default: socket)
-  host: "127.0.0.1"       # chronyd host (default: 127.0.0.1)
+  host: "192.168.10.249"  # chronyd host (default: 127.0.0.1)
   port: 323               # chronyd port (default: 323)
   data_update_interval: 1 # Time in seconds between Chrony statistics updates (default: 1)
