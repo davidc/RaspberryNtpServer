@@ -198,7 +198,7 @@ class ChronySocketClient(ChronyClient):
         self.port = port or DEFAULT_CANDM_PORT
         self._sock: Optional[socket.socket] = None
 
-        if update_interval and update_interval > 0:
+        if self.update_interval > 0:
             self._thread = threading.Thread(target=self._chrony_thread, daemon=True)
             self._thread.start()
 

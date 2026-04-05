@@ -114,7 +114,7 @@ options:
   display_utc_time: false
 ```
 
-**display_refresh_interval** - Time in seconds between display updates. Use this to control how frequently the display refreshes. Default is 0.25 seconds (~4 fps). Smaller values will make the display more responsive but use more CPU. If you adjust this, you'll probably also want to adjust the gpsd and chrony data_update_intervals.
+**display_refresh_interval** - Time in seconds between display updates. Use this to control how frequently the display refreshes. Default is 0.25 seconds (~4 fps). Smaller values will make the display more responsive but use more CPU. If you adjust this, you'll probably also want to adjust the chrony data_update_interval.
 
 ### Example: custom display refresh rate
 
@@ -274,7 +274,6 @@ When using `rich_terminal`, log messages are automatically displayed in a panel 
 Available gpsd options:
 - `host` (default: "localhost") - The gpsd server host address
 - `port` (default: 2947) - The gpsd server port number
-- `data_update_interval` (default: 1) - Time in seconds between GPS data polls. Use smaller values for more responsive GPS updates, larger values to load.
 
 ### Example: custom gpsd configuration
 
@@ -282,7 +281,6 @@ Available gpsd options:
 gpsd:
   host: "127.0.0.1"
   port: 2947
-  data_update_interval: 0.5  # Poll GPS data every 0.5 seconds
 ```
 
 **chrony** - Configuration for NTP synchronisation status monitoring.
@@ -291,7 +289,7 @@ Available chrony options:
 - `method` (default: socket) - Method to get data from chronyd. Can be `chronyc` (legacy method that constantly spawns `chronyc` processes) or `socket` (which connects directly to the chronyd using UDP)
 - `host` (default: "localhost") - Hostname or IP address where chronyd is running. Ignored unless `method` is `socket`.
 - `port` (default: 323) - Port number where chronyd is listening (`cmdport` in chrony.conf). Ignored unless `method` is `socket`.
-- `data_update_interval` (default: 1) - Time in seconds between Chrony statistics updates. Use smaller values for more responsive NTP status updates, larger values to reduce load.
+- `data_update_interval` (default: 1) - Time in seconds between Chrony statistics updates. Use smaller values for more responsive chrony status updates, larger values to reduce load.
 
 ### Example: custom chrony configuration
 
@@ -458,6 +456,7 @@ The `chronotron.py` service checks periodically `chronyc` for NTP statistics (`c
 
 ## History
 
+- 2026-04-05: 3.0.5: Remove data_update_interval from gpsd, unnecessary since gps.read blocks waiting for data. This was causing gps data to lag behind and the incoming buffer to grow in versions 3.0.0-3.0.4.
 - 2026-04-05: 3.0.4: Refactor layout into a layout class hierarchy.
 - 2026-04-05: 3.0.4: Add a DefaultFourLineLayout that is roughly the same as before but has consistent offset formatting and adds UTC offset if there's space.
 - 2026-04-05: 3.0.4: Add a CustomLayout that can be fully configured, add an example for a display that is identical to previous layout.

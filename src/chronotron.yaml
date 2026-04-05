@@ -92,7 +92,6 @@ displays:
 gpsd:
   host: "192.168.10.249"  # gpsd host (default: localhost)
   port: 2947              # gpsd port (default: 2947)
-  data_update_interval: 1 # Time in seconds between GPS data polls (default: 1)
 
 # Chrony Configuration
 # Settings for NTP synchronisation status monitoring

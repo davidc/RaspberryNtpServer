@@ -17,7 +17,7 @@ from scrolling_buffer_handler import ScrollingBufferHandler
 
 # from button import Button
 
-CHRONOTRON_VERSION = "3.0.4"
+CHRONOTRON_VERSION = "3.0.5"
 
 ######################################################
 ##                    ATTENTION                     ##
@@ -119,18 +119,12 @@ def parse_configuration(config: dict[str, Any]):
         backlight_mode = "on" if backlight_config else "off"
     elif isinstance(backlight_config, dict):
         if "start_time" not in backlight_config or "end_time" not in backlight_config:
-            raise ValueError(
-                "Backlight configuration dictionary must contain both 'start_time' and 'end_time' keys."
-            )
+            raise ValueError("Backlight configuration dictionary must contain both 'start_time' and 'end_time' keys.")
 
         backlight_mode = "timed"
         try:
-            backlight_start_time_obj = datetime.strptime(
-                backlight_config["start_time"], "%H:%M"
-            ).time()
-            backlight_end_time_obj = datetime.strptime(
-                backlight_config["end_time"], "%H:%M"
-            ).time()
+            backlight_start_time_obj = datetime.strptime(backlight_config["start_time"], "%H:%M").time()
+            backlight_end_time_obj = datetime.strptime(backlight_config["end_time"], "%H:%M").time()
         except ValueError as e:
             raise ValueError(f"Invalid time format in backlight configuration: {e}")
     else:
@@ -161,9 +155,7 @@ def parse_configuration(config: dict[str, Any]):
     if not layouts_dict:
         raise RuntimeError("No layouts were successfully initialised, exiting")
 
-    log.info(
-        f"Initialised {len(layouts_dict)} layout{len(layouts_dict) != 1 and 's' or ''}"
-    )
+    log.info(f"Initialised {len(layouts_dict)} layout{len(layouts_dict) != 1 and 's' or ''}")
 
     # Initialise displays from configuration
     displays_config = config.get("displays", [])
@@ -182,17 +174,13 @@ def parse_configuration(config: dict[str, Any]):
             displays.append(display)
             # log.info(f"Initialised display: {display_config.get('type', 'unknown')}")
         else:
-            log.warning(
-                f"Failed to initialise display: {display_config.get('type', 'unknown')}"
-            )
+            log.warning(f"Failed to initialise display: {display_config.get('type', 'unknown')}")
 
     if not displays:
         log.error("No displays were successfully initialised, exiting")
         exit(-1)
 
-    log.info(
-        "Initialised %d display%s" % (len(displays), "" if len(displays) == 1 else "s")
-    )
+    log.info("Initialised %d display%s" % (len(displays), "" if len(displays) == 1 else "s"))
 
     # Remove layouts that are not referenced by any display
     referenced_layout_ids = {id(display._layout) for display in displays}
@@ -209,10 +197,7 @@ def parse_configuration(config: dict[str, Any]):
     gpsd_config = config.get("gpsd", {})
     gpsd_host = gpsd_config.get("host", None)
     gpsd_port = gpsd_config.get("port", None)
-    gpsd_update_interval = gpsd_config.get("data_update_interval", None)
-    gpsd_client = GpsdClient(
-        host=gpsd_host, port=gpsd_port, update_interval=gpsd_update_interval
-    )
+    gpsd_client = GpsdClient(host=gpsd_host, port=gpsd_port)
 
     # chrony config
     chrony_config = config.get("chrony", {})
@@ -222,9 +207,7 @@ def parse_configuration(config: dict[str, Any]):
     if chrony_method == "socket":
         chrony_host = chrony_config.get("host", None)
         chrony_port = chrony_config.get("port", None)
-        chrony_client = ChronySocketClient(
-            update_interval=chrony_update_interval, host=chrony_host, port=chrony_port
-        )
+        chrony_client = ChronySocketClient(update_interval=chrony_update_interval, host=chrony_host, port=chrony_port)
     elif chrony_method == "chronyc":
         chrony_client = ChronyCmdClient(update_interval=chrony_update_interval)
     else:
@@ -235,9 +218,9 @@ def parse_configuration(config: dict[str, Any]):
     else:
         log.info(
             "Backlight will be on between "
-            + backlight_start_time_obj.strftime("%H:%M") # pyright: ignore[reportPossiblyUnboundVariable]
+            + backlight_start_time_obj.strftime("%H:%M")  # pyright: ignore[reportPossiblyUnboundVariable]
             + " and "
-            + backlight_end_time_obj.strftime("%H:%M") # pyright: ignore[reportPossiblyUnboundVariable]
+            + backlight_end_time_obj.strftime("%H:%M")  # pyright: ignore[reportPossiblyUnboundVariable]
         )
 
 
