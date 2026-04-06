@@ -240,6 +240,34 @@ displays:
     adafruit_hardware: true
 ```
 
+
+## OLED Display Support
+
+<img src="../images/oled_ssd1306_0.96inch.jpg" align="right" width="200" />
+
+Chronotron now supports OLED displays using `luma.oled`. Pictured is an example 0.96 inch SSD1306 - this one has yellow at the top and cyan at the bottom, but white is also available. It's actually a lot crisper than this photo would suggest.
+
+Example configuration in `chronotron.yaml`:
+
+```yaml
+- type: "oled"
+  device: "ssd1306"
+  i2c:
+    bus: 1
+    address: 0x3c
+  width: 128
+  height: 64
+  rotate: 0
+  # Optional TTF font file path. If omitted the default font (which may be proportionately spaced) is used.
+  # font: "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf"
+```
+
+Any display supported by `luma.oled` can be used. The device name should match the class in `luma.oled.devices`, such as `ssd1306`, `sh1106` and `ch1115`.
+
+Only I2C is supported currently. The `i2c.bus` is the bus to use (use 1 normally, or 0 for Raspberry Pi 1). The address can be omitted to use the default. Use `i2c-detect -y 1` to discover the address.
+
+If `font` is set, the font file is loaded from the specified path and used to render text. If not set, Chronotron will use the default PIL font which may be proportionately spaced and look rubbish.
+
 **For multiple displays** (e.g., both LCD and file logging for debugging):
 
 ```yaml
@@ -456,6 +484,7 @@ The `chronotron.py` service checks periodically `chronyc` for NTP statistics (`c
 
 ## History
 
+- 2025-04-06: 3.0.6: Add support for OLED displays using luma.oled. Refactor layout to return left and right parts to support proportionately-spaced fonts.
 - 2026-04-05: 3.0.5: Remove data_update_interval from gpsd, unnecessary since gps.read blocks waiting for data. This was causing gps data to lag behind and the incoming buffer to grow in versions 3.0.0-3.0.4.
 - 2026-04-05: 3.0.4: Refactor layout into a layout class hierarchy.
 - 2026-04-05: 3.0.4: Add a DefaultFourLineLayout that is roughly the same as before but has consistent offset formatting and adds UTC offset if there's space.

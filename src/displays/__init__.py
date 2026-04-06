@@ -66,10 +66,23 @@ def create_display(
                 log_buffer=log_buffer,
             )
 
+        elif display_type == "oled":
+            from .oled import OledDisplay
+
+            return OledDisplay(
+                device=display_config.get("device", None),
+                i2c=display_config.get("i2c", None),
+                physical_width=display_config.get("width", None),
+                physical_height=display_config.get("height", None),
+                rotate=display_config.get("rotate", 0),
+                font=display_config.get("font", None),
+            )
+
         else:
             log.error(f"Unknown display type: {display_type}")
             return None
 
     except Exception as e:
         log.error(f"Failed to create display of type {display_type}: {e}")
+        log.exception(e)
         return None

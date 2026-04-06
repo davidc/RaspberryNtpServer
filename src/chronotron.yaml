@@ -80,6 +80,17 @@ displays:
   #   cols: 20
   #   rows: 4
 
+  # OLED display using luma.oled. Only I2C is supported for now.
+  - type: "oled"
+    device: "ssd1306"
+    i2c:
+  #     # bus: 1
+  #     # address: 0x3c
+  #   # width: 128 # leave unset for device default
+  #   # height: 64 # leave unset for device default
+  #   # rotate: 1  # Rotation (0 = normal, 1 = 90°, 2 = 180°, 3 = 270°)
+  #   # Optional path to a TTF font file. If omitted, the default font (which may be proportionately spaced) is used.
+  #   # font: "/home/david/DejaVuSansMono.ttf"
   # Uncomment below to enable rich terminal output display (LCD-style)
   - type: "rich_terminal"
     cols: 20

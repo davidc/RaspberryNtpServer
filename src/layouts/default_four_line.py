@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import time
-from typing import Any
+from typing import Any, Optional
 
 from .layout import Layout
 
@@ -17,56 +17,54 @@ class DefaultFourLineLayout(Layout):
     def update(self, stats: dict[str, Any]) -> None:
         self.stats = dict(stats)
 
-    def get_line(self, line_number: int, cols: int) -> str:
-        line = ""
-        if line_number == 0:
-            line = self._format_time_line(cols)
-        elif line_number == 1:
-            line = self._format_tracking_line(cols)
-        elif line_number == 2:
-            line = self._format_source_line(cols)
-        elif line_number == 3:
-            line = self._format_footer_line(cols)
-
-        return self._pad_or_truncate(line, cols)
-
-    def _format_time_line(self, cols: int) -> str:
+    def _format_date(self) -> str:
         current_time = self.stats.get("current_time")
         if current_time is None:
             return ""
 
-        date_str = time.strftime("%Y-%m-%d", current_time) + " "
+        return time.strftime("%Y-%m-%d", current_time) + " "
+
+    def _format_time(self, remaining_cols: Optional[int]) -> str:
+        current_time = self.stats.get("current_time")
+        if current_time is None:
+            return ""
+
         time_str = time.strftime("%H:%M:%S", current_time)
 
-        basic_width = len(date_str) + len(time_str)
-
+        # If we're on a 
         full_utc_offset = self._format_utc_offset(current_time.tm_gmtoff)
 
-        if basic_width + 1 + len(full_utc_offset) <= cols:
-            # We have space for full offset
+        # If we're on a fixed-width display, see if we can in an offset
+        if remaining_cols is not None:
+            if len(time_str) + 1 + len(full_utc_offset) <= remaining_cols:
+                # We have space for full offset
+                time_str += " " + full_utc_offset
+            elif  current_time.tm_gmtoff == 0 and len(time_str) + 1 <= remaining_cols:
+                # We have space for a zulu marker and we're in UTC
+                time_str += "Z"
+        else:
+            # Variable width display, assume that we have space
             time_str += " " + full_utc_offset
-        elif current_time.tm_gmtoff == 0 and basic_width + 1 <= cols:
-            # We have space for a zulu marker and we're in UTC
-            time_str += "Z"
 
-        return self._format_justified_line(date_str, time_str, cols)
+        return time_str
 
-    def _format_tracking_line(self, cols: int) -> str:
+    # TODO test with descending fileoutput width again, think I need a " " on time_str
+
+    def _format_stratum(self) -> str:
         stratum = self.stats.get("stratum")
         if stratum is None:
-            stratum_str = "S[?]"
+            return "S[?]"
         else:
-            stratum_str = f"S[{stratum}]"
+            return f"S[{stratum}]"
 
+    def _format_system_time_offset(self, remaining_cols: Optional[int]) -> str:
         offset = self.stats.get("system_time_offset")
         if offset is None:
-            offset_str = "?"
+            return "?"
         else:
-            offset_str = self._format_signed_offset(offset)
+            return str(self._format_signed_offset(offset))
 
-        return self._format_justified_line(stratum_str + " ", offset_str, cols)
-
-    def _format_source_line(self, cols: int) -> str:
+    def _format_source(self) -> str:
         if self.stats.get("is_locked"):
             source_str = "L[*] "
         else:
@@ -74,9 +72,9 @@ class DefaultFourLineLayout(Layout):
 
         source_str += self.stats.get("source") or ""
 
-        return self._pad_or_truncate(source_str, cols)
+        return source_str
 
-    def _format_footer_line(self, cols: int) -> str:
+    def _format_gps_fix(self) -> str:
         if self.stats.get("mode") is None:
             mode_str = "F[-]"
         else:
@@ -90,12 +88,42 @@ class DefaultFourLineLayout(Layout):
 
         sats_str = f"{sats_used_text}/{sats_text}"
 
+        return mode_str + " " + sats_str + " "
+
+    def _format_adjusted_offset(self, remaining_cols: Optional[int]) -> str:
         adjusted_offset = self.stats.get("adjusted_offset")
         if adjusted_offset is None:
-            dev_str = "?"
+            return "?"
         else:
-            dev_str = self._format_signed_offset(adjusted_offset)
+            return str(self._format_signed_offset(adjusted_offset))
 
-        return self._format_justified_line(
-            mode_str + " " + sats_str + " ", dev_str, cols
-        )
+        return self._format_justified_line(mode_str + " " + sats_str + " ", dev_str, cols)
+
+    def get_line_left(self, line_number: int) -> str:
+        if line_number == 0:
+            return self._format_date()
+        elif line_number == 1:
+            return self._format_stratum()
+        elif line_number == 2:
+            return self._format_source()
+        elif line_number == 3:
+            return self._format_gps_fix()
+        return ""
+
+    def get_line_right(self, line_number: int, remaining_cols: Optional[int] = None) -> str:
+        if line_number == 0:
+            return self._format_time(remaining_cols)
+        elif line_number == 1:
+            return self._format_system_time_offset(remaining_cols)
+        elif line_number == 2:
+            return ""
+        elif line_number == 3:
+            return self._format_adjusted_offset(remaining_cols)
+        return ""
+
+    def get_line(self, line_number: int, cols: int) -> str:
+
+        left_str = self.get_line_left(line_number)
+        right_str = self.get_line_right(line_number, max(0, cols - len(left_str)))
+
+        return self._format_justified_line(left_str, right_str, cols)

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Any
+from typing import Any, Optional
 
 from .layout import Layout
 
@@ -28,24 +28,34 @@ class CustomLayout(Layout):
     def update(self, stats: dict[str, Any]) -> None:
         self.stats = dict(stats)
 
-    def get_line(self, line_number: int, cols: int) -> str:
-        if line_number < 0 or line_number >= len(self.lines_config):
-            return " " * cols
-
+    def get_line_left(self, line_number: int) -> str:
         config = self.lines_config[line_number]
 
         if isinstance(config, dict):
             # Left/right format
             left = config.get("left", "")
-            right = config.get("right", "")
-            left_str = self._format_string(left)
-            right_str = self._format_string(right)
-            return self._format_justified_line(left_str, right_str, cols)
+            return self._format_string(left)
         else:
             # Simple string format
-            text = self._format_string(str(config))
-            return self._pad_or_truncate(text, cols)
-    
+            return self._format_string(str(config))
+
+    def get_line_right(self, line_number: int, remaining_cols: Optional[int] = None) -> str:
+        config = self.lines_config[line_number]
+
+        if isinstance(config, dict):
+            # Left/right format
+            right = config.get("right", "")
+            return self._format_string(right)
+        else:
+            # Simple string format has no right part
+            return ""
+
+    def get_line(self, line_number: int, cols: int) -> str:
+        if line_number < 0 or line_number >= len(self.lines_config):
+            return " " * cols
+
+        return self._format_justified_line(self.get_line_left(line_number), self.get_line_right(line_number), cols)
+      
 
     def _format_string(self, template: str) -> str:
         """Format a template string with access to stats and common functions."""

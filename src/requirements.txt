@@ -5,3 +5,4 @@ gpsd
 # TODO is this the right pip package name:
 # smbus-cffi>=0.5.1
 rich>=13.0
+luma.oled

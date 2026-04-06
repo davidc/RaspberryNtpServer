@@ -17,7 +17,7 @@ from scrolling_buffer_handler import ScrollingBufferHandler
 
 # from button import Button
 
-CHRONOTRON_VERSION = "3.0.5"
+CHRONOTRON_VERSION = "3.0.6"
 
 ######################################################
 ##                    ATTENTION                     ##

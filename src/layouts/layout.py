@@ -15,8 +15,19 @@ class Layout(ABC):
         pass
 
     @abstractmethod
+    def get_line_left(self, line_number: int) -> str:
+        """Return the left-justified part of a given line number."""
+        pass
+
+    @abstractmethod
+    def get_line_right(self, line_number: int, remaining_cols: Optional[int] = None) -> str:
+        """Return the right-justified part of a given line number.
+        remaining_cols is passed for fixed-width displays so that implementations can optionally format based on remaining available space."""
+        pass
+
+    @abstractmethod
     def get_line(self, line_number: int, cols: int) -> str:
-        """Return the formatted line for a given line number and width."""
+        """Return the formatted line for a given line number and fixed-width display."""
         pass
 
     def _format_utc_offset(self, seconds: int) -> str:
