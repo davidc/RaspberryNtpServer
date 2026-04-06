@@ -1,5 +1,7 @@
 #!/usr/bin/python
 
+import argparse
+import sys
 import time
 from datetime import datetime, time as dt_time
 import logging
@@ -17,8 +19,6 @@ from scrolling_buffer_handler import ScrollingBufferHandler
 
 # from button import Button
 
-CHRONOTRON_VERSION = "3.0.6"
-
 ######################################################
 ##                    ATTENTION                     ##
 ######################################################
@@ -29,6 +29,9 @@ CHRONOTRON_VERSION = "3.0.6"
 ##  and chronotron.yaml for example configuration.  ##
 ##                                                  ##
 ######################################################
+
+CHRONOTRON_VERSION = "3.0.6"
+DEFAULT_CONFIG_FILE = "chronotron.yaml"
 
 
 # Parsed Configuration with defaults (use chronotron.yaml to configure these)
@@ -50,14 +53,39 @@ gps_client: GpsdClient
 chrony_client: ChronyClient
 
 
-# ------- CONFIGURATION FROM YAML FILE -----------------------
-def load_configuration(
-    config_file: str = "chronotron.yaml",
-) -> dict[str, Any]:  # pyright:ignore[reportExplicitAny]
+def parse_args() -> argparse.Namespace:
+    """Parse command line arguments."""
+    parser = argparse.ArgumentParser(description="Chronotron NTP/GPS statistics display")
+    parser.add_argument(
+        "-v",
+        "--version",
+        action="store_true",
+        help="Print the Chronotron version and exit",
+    )
+    parser.add_argument(
+        "-c",
+        "--config-file",
+        dest="config_file",
+        # default="chronotron.yaml",
+        help="Path to the YAML configuration file (default: chronotron.yaml)",
+    )
+
+    args = parser.parse_args()
+
+    if args.version:
+        print(f"Chronotron version {CHRONOTRON_VERSION}")
+        sys.exit(0)
+
+    if args.config_file and not os.path.exists(args.config_file):
+        parser.error(f"Configuration file not found: {args.config_file}")
+
+    return args
+
+
+def load_configuration(config_file: Optional[str]) -> dict[str, Any]:  # pyright:ignore[reportExplicitAny]
     """
-    Load configuration from YAML file.
-    If the file doesn't exist in the current directory, a basic default will be used.
-    TODO add a command line arg -f to specify the config file location
+    Load configuration from YAML file. If unspecified, look for "chronotron.yaml" in the current directory.
+    If that file is not found, a basic default configuration will be used.
     """
     # Default configuration if no YAML file is found. Matches previous hardcoded defaults.
     default_config = {
@@ -85,11 +113,11 @@ def load_configuration(
         },
     }
 
-    # Check if config file exists
-    if not os.path.exists(config_file):
-        # TODO this should be fatal if the user specified the file using -f
-        log.warning(f"Config file {config_file} not found, using defaults")
-        return default_config
+    if config_file is None:
+        config_file = DEFAULT_CONFIG_FILE
+        if not os.path.exists("chronotron.yaml"):
+            log.warning(f"Config file {config_file} not found, using defaults")
+            return default_config
 
     try:
         with open(config_file, "r") as f:
@@ -172,15 +200,14 @@ def parse_configuration(config: dict[str, Any]):
         if display is not None:
             display.set_layout(layout)
             displays.append(display)
-            # log.info(f"Initialised display: {display_config.get('type', 'unknown')}")
         else:
             log.warning(f"Failed to initialise display: {display_config.get('type', 'unknown')}")
 
     if not displays:
         log.error("No displays were successfully initialised, exiting")
-        exit(-1)
+        sys.exit(1)
 
-    log.info("Initialised %d display%s" % (len(displays), "" if len(displays) == 1 else "s"))
+    log.info(f"Initialised {len(displays)} display{'s' if len(displays) != 1 else ''}")
 
     # Remove layouts that are not referenced by any display
     referenced_layout_ids = {id(display._layout) for display in displays}
@@ -254,10 +281,13 @@ def init():
     root_logger = logging.getLogger()
     root_logger.addHandler(log_buffer)
 
+    # Parse command-line arguments
+    args = parse_args()
+
     log.info(f"Chronotron version {CHRONOTRON_VERSION} starting")
 
     # Load and parse configuration
-    config = load_configuration()
+    config = load_configuration(args.config_file)
     parse_configuration(config)
 
     # Now displays are initialised, remove our log buffer if nobody wants it

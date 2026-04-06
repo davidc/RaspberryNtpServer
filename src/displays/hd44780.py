@@ -263,4 +263,3 @@ if __name__ == "__main__":
     lcd.print(test_text)
     dtc: float = (time.time() - start_time) / len(test_text)
     print(f"Done, display speed per character: {dtc:1.8f} sec")
-    exit(0)

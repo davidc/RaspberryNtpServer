@@ -47,6 +47,9 @@ class RichTerminalDisplay(Display):
         backlight_on_style = backlight_on_style or "bright_cyan on blue"
         backlight_off_style = backlight_off_style or "cyan on black"
 
+        if not sys.stdout.isatty():
+            raise RuntimeError("RichTerminalDisplay requires an interactive terminal (stdout is not a tty)")
+
         self.log: logging.Logger = logging.getLogger("RichTerminalDisplay")
         self.cols: int = cols
         self.rows: int = rows

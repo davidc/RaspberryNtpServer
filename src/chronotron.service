@@ -4,10 +4,13 @@ After=network.target
 
 [Service]
 Type=simple
-User=root
-Group=root
+# chronotron does not need to run as root as it utilises socket communication with gpsd and chronyd.
+# However, it may need to be in the i2c group to access the I2C devices if you have an I2C display.
+# It should ideally not run as nobody; change this to a user and group that has the necessary privileges.
+User=nobody
+Group=i2c
 WorkingDirectory=/opt/chronotron
-ExecStart=/opt/chronotron/chronotron.py
+ExecStart=/usr/bin/python3 /opt/chronotron/chronotron.py -c /opt/chronotron/chronotron.yaml
 StandardOutput=syslog
 StandardError=syslog
 
