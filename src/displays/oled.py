@@ -25,6 +25,8 @@ class OledDisplay(Display):
         physical_height: Optional[int] = None,
         rotate: int = 0,
         font: Optional[str] = None,
+        backlight_on_contrast: Optional[int] = None,
+        backlight_off_contrast: Optional[int] = None,
     ):
         super().__init__()
 
@@ -37,6 +39,9 @@ class OledDisplay(Display):
 
         if rotate not in (0, 1, 2, 3):
             raise ValueError("OLED display 'rotate' configuration must be 0, 1, 2, or 3")
+
+        self.backlight_on_contrast = backlight_on_contrast if backlight_on_contrast else 255
+        self.backlight_off_contrast = backlight_off_contrast if backlight_off_contrast else 1
 
         serial_interface = self._create_serial_interface(i2c)
         self._device: luma_device = self._create_device(serial_interface, physical_width, physical_height, rotate)
@@ -51,7 +56,7 @@ class OledDisplay(Display):
         print(f"Measured character size: {char_size}, line height set to: {self._line_height}")
 
         self.cols = self.display_width // char_size[0]
-        self.rows = self.MIN_ROWS # .display_height // self._line_height
+        self.rows = self.MIN_ROWS  # .display_height // self._line_height
 
         self._line_spacing = (self.display_height - (self._line_height * self.rows)) // self.rows
         print(f"Calculated line spacing: {self._line_spacing}")
@@ -159,7 +164,7 @@ class OledDisplay(Display):
 
     def set_backlight(self, state: bool) -> None:
         try:
-            contrast_value = 255 if state else 1
+            contrast_value = self.backlight_on_contrast if state else self.backlight_off_contrast
             self._device.contrast(contrast_value)
         except Exception as e:
             self.log.warning(f"Failed to set OLED backlight state: {e}")

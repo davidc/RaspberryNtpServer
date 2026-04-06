@@ -76,6 +76,8 @@ def create_display(
                 physical_height=display_config.get("height", None),
                 rotate=display_config.get("rotate", 0),
                 font=display_config.get("font", None),
+                backlight_on_contrast=display_config.get("backlight_on_contrast", None),
+                backlight_off_contrast=display_config.get("backlight_off_contrast", None),
             )
 
         else:

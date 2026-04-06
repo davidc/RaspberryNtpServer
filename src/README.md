@@ -494,6 +494,7 @@ The `chronotron.py` service checks periodically `chronyc` for NTP statistics (`c
 
 - 2025-04-07: 3.0.7: Add command line arguments: -v to print version and -c to specify config file location. Update systemd service to hardcode this file and note that chronotron no longer needs to run as root.
 - 2025-04-07: 3.0.7: Do not permit use of RichTerminalDisplay if output is not a tty.
+- 2025-04-07: 3.0.7: Add backlight_on_contrast and backlight_off_contrast for OledDisplay.
 - 2025-04-06: 3.0.6: Add support for OLED displays using luma.oled. Refactor layout to return left and right parts to support proportionately-spaced fonts.
 - 2026-04-05: 3.0.5: Remove data_update_interval from gpsd, unnecessary since gps.read blocks waiting for data. This was causing gps data to lag behind and the incoming buffer to grow in versions 3.0.0-3.0.4.
 - 2026-04-05: 3.0.4: Refactor layout into a layout class hierarchy.

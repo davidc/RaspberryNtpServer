@@ -91,6 +91,9 @@ displays:
   #   # rotate: 1  # Rotation (0 = normal, 1 = 90°, 2 = 180°, 3 = 270°)
   #   # Optional path to a TTF font file. If omitted, the default font (which may be proportionately spaced) is used.
   #   # font: "/home/david/DejaVuSansMono.ttf"
+  #   # Optional contrast values for backlight state:
+  #   # backlight_on_contrast: 255
+  #   # backlight_off_contrast: 1
   # Uncomment below to enable rich terminal output display (LCD-style)
   - type: "rich_terminal"
     cols: 20
