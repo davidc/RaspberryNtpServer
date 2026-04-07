@@ -30,7 +30,7 @@ from scrolling_buffer_handler import ScrollingBufferHandler
 ##                                                  ##
 ######################################################
 
-CHRONOTRON_VERSION = "3.0.6"
+CHRONOTRON_VERSION = "3.0.7"
 DEFAULT_CONFIG_FILE = "chronotron.yaml"
 
 
@@ -42,6 +42,7 @@ display_utc_time: bool = False
 display_refresh_interval: float = 0.5
 gpsd_host: str
 gpsd_port: int
+backlight_override: Optional[bool] = None
 
 # Runtime
 log: logging.Logger
@@ -252,7 +253,11 @@ def parse_configuration(config: dict[str, Any]):
 
 
 def is_backlight_wanted() -> bool:
-    """Determine if backlight should be on based on configuration and current time."""
+    """Determine if backlight should be on based on configuration, override, and current time."""
+    global backlight_override
+    if backlight_override is not None:
+        return backlight_override
+
     if backlight_mode == "on":
         return True
     elif backlight_mode == "off":
@@ -301,6 +306,26 @@ def init():
     )
 
 
+def poll_interactive_displays():
+    """Read interactive commands from displays (e.g. keypresses on rich terminal) and handle them."""
+    for display in displays:
+        action = display.poll_interactive()
+        if action == "quit":
+            log.info("Quit pressed")
+            raise SystemExit(0)
+        elif action == "backlight_state":
+            global backlight_override
+            if backlight_override is None:
+                backlight_override = False
+            elif backlight_override is False:
+                backlight_override = True
+            else:
+                backlight_override = None
+
+            mode_str = "OFF" if backlight_override is False else "ON" if backlight_override is True else "AUTO"
+            log.info(f"Backlight mode changed to {mode_str}")
+
+
 def main_loop():
     last_backlight: Optional[bool] = None
     select_state = 0
@@ -326,6 +351,8 @@ def main_loop():
     # bt = Button([(27, "blue", select_button), (22, "black", main_button)])
 
     while True:
+        poll_interactive_displays()
+
         # Set backlight state for all displays
         want_backlight = is_backlight_wanted()
         if want_backlight != last_backlight:

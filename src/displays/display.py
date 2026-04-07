@@ -1,7 +1,7 @@
 """Base Display class for different display hardware types"""
 
 from abc import ABC, abstractmethod
-from typing import Any
+from typing import Any, Optional
 
 from layouts import Layout
 
@@ -33,3 +33,7 @@ class Display(ABC):
     def update(self) -> None:
         """Update the display."""
         pass
+
+    def poll_interactive(self) -> Optional[str]:
+        """Polls an interactive display for user input and returns a command string."""
+        return None

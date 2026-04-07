@@ -5,7 +5,7 @@ import sys
 import time
 import signal
 import atexit
-from typing import Optional, List, Tuple
+from typing import Optional
 from rich.console import Console
 from rich.text import Text
 from rich.panel import Panel
@@ -18,6 +18,13 @@ from .display import Display
 
 STYLE_TABLE_HEADER = "bold magenta"
 STYLE_PANEL = "bright_blue"
+
+HELP_TEXT = [
+    "Keyboard commands:",
+    "  q - Quit",
+    "  b - Cycle backlight AUTO/OFF/ON",
+    "  h - Show/hide this help",
+]
 
 
 class RichTerminalDisplay(Display):
@@ -57,6 +64,7 @@ class RichTerminalDisplay(Display):
         self.backlight_on_style: str = backlight_on_style
         self.backlight_off_style: str = backlight_off_style
         self.buffer: list[str] = [" " * cols for _ in range(rows)]
+        self.help_overlay: bool = False
 
         self.console = Console()
         self._lcd_dirty = True
@@ -65,9 +73,7 @@ class RichTerminalDisplay(Display):
         # Set up Rich layout
         self.rich_layout = RichLayout()
         self.rich_layout.split_column(
-            RichLayout(
-                name="lcd_container", size=self.rows + 2
-            ),  # Fixed height for LCD
+            RichLayout(name="lcd_container", size=self.rows + 2),  # Fixed height for LCD
             RichLayout(name="logs"),  # Logs take remaining space
         )
 
@@ -76,9 +82,7 @@ class RichTerminalDisplay(Display):
         # Set up LCD container with horizontal centering
         self.rich_layout["lcd_container"].split_row(
             RichLayout(name="lcd_left", ratio=1),  # Flexible space
-            RichLayout(
-                self._lcd_panel, name="lcd", size=self.cols + 4
-            ),  # LCD panel width
+            RichLayout(self._lcd_panel, name="lcd", size=self.cols + 4),  # LCD panel width
             RichLayout(name="lcd_right", ratio=1),  # Flexible space
         )
 
@@ -97,37 +101,43 @@ class RichTerminalDisplay(Display):
             # Signal handling not available on this platform
             pass
 
-        try:
-            # Register cleanup
-            atexit.register(self._cleanup)
+        # Register cleanup
+        atexit.register(self._cleanup)
 
-            self.log_buffer = log_buffer
-            
-            if self.log_buffer:
-                self.log_buffer.wanted()
-                self.log_buffer.add_listener(self._on_log_update)
+        # if Unix, set stdin to cbreak mode
 
-            # Remove existing StreamHandlers to prevent printing over our terminal
-            root_logger = logging.getLogger()
-            for handler in root_logger.handlers.copy():
-                if isinstance(handler, logging.StreamHandler):
-                    root_logger.removeHandler(handler)
+        if not sys.platform.startswith("win"):
+            try:
+                import termios
+                import tty
 
-            # Update initial display
-            self._update_display()
+                fd = sys.stdin.fileno()
+                self._orig_term_settings = termios.tcgetattr(fd)
+                tty.setcbreak(fd)
+            except ImportError:
+                self.log.warning("Unable to register keyboard handling")
+                return None
 
-            self.log.info("RichTerminalDisplay initialised")
-        except Exception as e:
-            self.log.error(f"Failed to initialise RichTerminalDisplay: {e}")
-            raise
+        self.log_buffer = log_buffer
+
+        if self.log_buffer:
+            self.log_buffer.wanted()
+            self.log_buffer.add_listener(self._on_log_update)
+
+        # Remove existing StreamHandlers to prevent printing over our terminal
+        root_logger = logging.getLogger()
+        for handler in root_logger.handlers.copy():
+            if isinstance(handler, logging.StreamHandler):
+                root_logger.removeHandler(handler)
+
+        # Update initial display
+        self._update_display()
+
+        self.log.info("RichTerminalDisplay initialised")
 
     def _handle_resize(self, signum: int, frame) -> None:
         """Handle terminal resize by redrawing the display."""
-        logging.debug(
-            "Display resized to {}x{}".format(
-                self.console.size.width, self.console.size.height
-            )
-        )
+        logging.debug("Display resized to {}x{}".format(self.console.size.width, self.console.size.height))
         self._update_display(force=True)
 
     def _cleanup(self) -> None:
@@ -135,6 +145,15 @@ class RichTerminalDisplay(Display):
         if hasattr(self, "console"):
             self.console.set_alt_screen(False)
             self.console.show_cursor(True)
+
+        if not sys.platform.startswith("win") and self._orig_term_settings:
+            try:
+                import termios
+
+                fd = sys.stdin.fileno()
+                termios.tcsetattr(fd, termios.TCSADRAIN, self._orig_term_settings)
+            except ImportError:
+                pass
 
     def _on_log_update(self) -> None:
         """Called when the log buffer is updated."""
@@ -165,23 +184,20 @@ class RichTerminalDisplay(Display):
     def _create_lcd_panel(self) -> Panel:
         """Create the LCD panel."""
 
-        # Create panel with border matching log panel
         panel = Panel(
             self._create_lcd_text(),
-            title="[bold]LCD Display[/bold]",
-            border_style=STYLE_PANEL,  # Same as log panel
+            title="[bold]LCD (h for help)[/bold]",
+            border_style=STYLE_PANEL,
             padding=(0, 1),
-            width=self.cols + 4,  # Content width + padding + borders
-            height=self.rows + 2,  # Content height + borders
-            expand=False,  # Don't expand to fill available space
+            width=self.cols + 4,
+            height=self.rows + 2,
+            expand=False,
         )
 
         return panel
 
     def _create_lcd_text(self) -> Text:
-        style = (
-            self.backlight_on_style if self._backlight_on else self.backlight_off_style
-        )
+        style = self.backlight_on_style if self._backlight_on else self.backlight_off_style
         lcd_lines = []
         for row_text in self.buffer:
             # Pad/truncate each row to exactly cols characters
@@ -192,6 +208,19 @@ class RichTerminalDisplay(Display):
 
         # Create styled text
         return Text(lcd_content, style=style)
+
+    def _create_help_panel(self) -> Panel:
+        help_content = "\n".join(HELP_TEXT)
+
+        help_panel = Panel(
+            help_content,
+            title="[bold]Help (h again to close)[/bold]",
+            border_style=STYLE_PANEL,
+            padding=(0, 1),
+            expand=False,
+        )
+
+        return help_panel
 
     def _create_log_panel(self) -> Panel:
         """Create the log messages panel."""
@@ -206,9 +235,7 @@ class RichTerminalDisplay(Display):
         return panel
 
     def _create_log_table(self):
-        table = Table(
-            show_header=True, header_style=STYLE_TABLE_HEADER, box=None, show_edge=False
-        )
+        table = Table(show_header=True, header_style=STYLE_TABLE_HEADER, box=None, show_edge=False)
         table.add_column("Time", style="dim", width=8, no_wrap=True)
         table.add_column("Level", width=8, no_wrap=True)
         table.add_column("Message", style="white")
@@ -235,6 +262,12 @@ class RichTerminalDisplay(Display):
     def _update_display(self, force: bool = False) -> None:
         """Update the changed parts of the display layout."""
 
+        if self.help_overlay:
+            help_panel = self._create_help_panel()
+            live_display = RichLayout(Align.center(help_panel, vertical="middle"))
+        else:
+            live_display = self.rich_layout
+
         # Update only the panels that have changed
         updated = False
         if self._lcd_dirty:
@@ -251,12 +284,11 @@ class RichTerminalDisplay(Display):
         if updated or force:
             # Start Live display if not already started
             if self.live is None:
-                self.live = Live(
-                    self.rich_layout, console=self.console, screen=True, auto_refresh=False
-                )
+                self.live = Live(live_display, console=self.console, screen=True, auto_refresh=False)
                 self.live.start()
             else:
                 # Refresh the existing live display
+                self.live.update(live_display)
                 self.live.refresh()
 
     def update(self) -> None:
@@ -277,6 +309,52 @@ class RichTerminalDisplay(Display):
             self._backlight_on = state
             self._update_display(force=True)  # Force full update to apply new style
 
+    def _read_keypress(self) -> Optional[str]:
+        """Read a single keypress without blocking."""
+        if not sys.stdin.isatty():
+            return None
+
+        if sys.platform.startswith("win"):
+            try:
+                import msvcrt
+
+                if msvcrt.kbhit():
+                    return msvcrt.getwch()
+            except (ImportError, OSError):
+                return None
+
+        import select
+
+        try:
+            dr, _, _ = select.select([sys.stdin], [], [], 0)
+        except (ValueError, OSError):
+            return None
+
+        if not dr:
+            return None
+
+        return sys.stdin.read(1)
+
+    def poll_interactive(self) -> Optional[str]:
+        """Handle a keypress and return action plus optional backlight override.
+        TODO this should be interrupt-driven so it doesn't need to wait for the next main_loop iteration"""
+        key = self._read_keypress()
+        if key is None:
+            return None
+
+        if key.lower() == "q":
+            return "quit"
+
+        if key.lower() == "b":
+            return "backlight_state"
+
+        if key.lower() == "h":
+            self.help_overlay = not self.help_overlay
+            self._update_display(force=True)
+            return None
+
+        return None
+
     def __del__(self):
         # Stop live display if running
         if hasattr(self, "live") and self.live is not None:
@@ -286,8 +364,6 @@ class RichTerminalDisplay(Display):
                 pass  # Ignore errors during cleanup
 
         # Decrement instance count
-        RichTerminalDisplay._instance_count = max(
-            0, RichTerminalDisplay._instance_count - 1
-        )
+        RichTerminalDisplay._instance_count = max(0, RichTerminalDisplay._instance_count - 1)
         self._cleanup()
         atexit.unregister(self._cleanup)
