@@ -186,7 +186,7 @@ class OledDisplay(Display):
 
             right_str = self._layout.get_line_right(row, remaining_cols)
             if right_str:
-                draw.text((self.display_width, y), right_str, anchor="ra", font=self._font, fill=255)
+                draw.text((self.display_width - 1, y), right_str, anchor="ra", font=self._font, fill=255)
 
         try:
             self._device.display(image)
